@@ -1001,7 +1001,7 @@ async function generatePDF() {
 
   const S = `
   <style>
-    .pg{background:#fff;padding:8px 10px;font-family:'Noto Sans','Noto Sans Thai','Noto Sans Myanmar',sans-serif;color:#111;line-height:1.25;box-sizing:border-box;position:relative}
+    .pg{background:#fff;padding:8px 10px;font-family:'Noto Sans SC','Noto Sans','Noto Sans Thai','Noto Sans Myanmar','PingFang SC','Microsoft YaHei','Tahoma',sans-serif;color:#111;line-height:1.25;box-sizing:border-box;position:relative;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
     .pg-land{width:1123px;min-height:794px}
     .pg-port{width:794px;min-height:1123px}
     .pg *{box-sizing:border-box}
@@ -1226,9 +1226,9 @@ async function generatePDF() {
 
   // Render pages
   const pageConfigs = [
-    { html: buildPage1(), orientation: 'landscape', widthPx: 1123, pdfW: 297, pdfH: 210 },
-    { html: buildPhotoPage(0, 15), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297 },
-    { html: buildPhotoPage(15, 29), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297 },
+    { html: buildPage1(), orientation: 'landscape', widthPx: 1123, pdfW: 297, pdfH: 210, imageFormat: 'PNG', renderScale: 3.0 },
+    { html: buildPhotoPage(0, 15), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.5, imageQuality: 0.92 },
+    { html: buildPhotoPage(15, 29), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.5, imageQuality: 0.92 },
   ];
 
   container.innerHTML = S + pageConfigs.map(p => p.html).join('');
@@ -1247,15 +1247,13 @@ async function generatePDF() {
   const pages = container.querySelectorAll('.pg');
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
-  const renderScale = 2.4;
-  const jpgQuality = 0.9;
 
   for (let i = 0; i < pages.length; i++) {
     const cfg = pageConfigs[i];
     if (i > 0) doc.addPage('a4', cfg.orientation);
     try {
       const canvas = await html2canvas(pages[i], {
-        scale: renderScale,
+        scale: cfg.renderScale || 2.4,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -1264,8 +1262,13 @@ async function generatePDF() {
         imageTimeout: 20000,
         logging: false,
       });
-      const jpgData = canvas.toDataURL('image/jpeg', jpgQuality);
-      doc.addImage(jpgData, 'JPEG', 0, 0, cfg.pdfW, cfg.pdfH, undefined, 'MEDIUM');
+      if (cfg.imageFormat === 'PNG') {
+        const pngData = canvas.toDataURL('image/png');
+        doc.addImage(pngData, 'PNG', 0, 0, cfg.pdfW, cfg.pdfH);
+      } else {
+        const jpgData = canvas.toDataURL('image/jpeg', cfg.imageQuality || 0.9);
+        doc.addImage(jpgData, 'JPEG', 0, 0, cfg.pdfW, cfg.pdfH, undefined, 'MEDIUM');
+      }
     } catch(e) {
       console.error('Page render error:', e);
     }
