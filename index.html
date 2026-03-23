@@ -1226,9 +1226,9 @@ async function generatePDF() {
 
   // Render pages
   const pageConfigs = [
-    { html: buildPage1(), orientation: 'landscape', widthPx: 1123, pdfW: 297, pdfH: 210, imageFormat: 'PNG', renderScale: 3.0 },
-    { html: buildPhotoPage(0, 15), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.5, imageQuality: 0.92 },
-    { html: buildPhotoPage(15, 29), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.5, imageQuality: 0.92 },
+    { html: buildPage1(), orientation: 'landscape', widthPx: 1123, pdfW: 297, pdfH: 210, imageFormat: 'PNG', renderScale: 3.4 },
+    { html: buildPhotoPage(0, 15), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.8, imageQuality: 0.95 },
+    { html: buildPhotoPage(15, 29), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.8, imageQuality: 0.95 },
   ];
 
   container.innerHTML = S + pageConfigs.map(p => p.html).join('');
@@ -1267,7 +1267,7 @@ async function generatePDF() {
         doc.addImage(pngData, 'PNG', 0, 0, cfg.pdfW, cfg.pdfH);
       } else {
         const jpgData = canvas.toDataURL('image/jpeg', cfg.imageQuality || 0.9);
-        doc.addImage(jpgData, 'JPEG', 0, 0, cfg.pdfW, cfg.pdfH, undefined, 'MEDIUM');
+        doc.addImage(jpgData, 'JPEG', 0, 0, cfg.pdfW, cfg.pdfH, undefined, 'SLOW');
       }
     } catch(e) {
       console.error('Page render error:', e);
