@@ -26,6 +26,7 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
 .content{flex:1;padding:12px;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .bottom-nav{display:flex;background:#fff;border-top:1px solid #e0e0e0;position:sticky;bottom:0;z-index:100}
 .bottom-nav button{flex:1;padding:10px 0;border:none;background:none;font-size:.75rem;color:#888;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.bottom-nav button small{font-size:.62rem;line-height:1;opacity:.85}
 .bottom-nav button.active{color:#1a5276}
 .bottom-nav button svg{width:22px;height:22px}
 
@@ -160,33 +161,33 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
   <div class="login-title">森雅国际验货系统</div>
   <div class="login-subtitle">Senia International Inspection System</div>
   <div class="login-card">
-    <h2>用户登录</h2>
+    <h2>用户登录 / User Login</h2>
     <div class="form-group">
-      <label>用户名</label>
-      <input type="text" id="loginUser" placeholder="请输入用户名" autocomplete="username">
+      <label>用户名 / Username</label>
+      <input type="text" id="loginUser" placeholder="请输入用户名 / Enter username" autocomplete="username">
     </div>
     <div class="form-group">
-      <label>密码</label>
-      <input type="password" id="loginPass" placeholder="请输入密码" autocomplete="current-password">
+      <label>密码 / Password</label>
+      <input type="password" id="loginPass" placeholder="请输入密码 / Enter password" autocomplete="current-password">
     </div>
     <div class="form-group">
-      <label>角色</label>
+      <label>角色 / Role</label>
       <select id="loginRole">
         <option value="inspector">质检员 Inspector</option>
         <option value="supervisor">主管 Supervisor</option>
       </select>
     </div>
-    <button class="btn btn-primary" onclick="doLogin()">登 录</button>
+    <button class="btn btn-primary" onclick="doLogin()">登 录 / Login</button>
   </div>
 </div>
 
 <!-- ==================== MAIN APP ==================== -->
 <div id="mainApp" class="page">
   <div class="header">
-    <h1 id="headerTitle">验货报告</h1>
+    <h1 id="headerTitle">验货报告 / Inspection Reports</h1>
     <div style="display:flex;gap:8px;align-items:center">
       <span id="userBadge" style="font-size:.78rem;opacity:.8"></span>
-      <button class="header-btn" onclick="logout()">退出</button>
+      <button class="header-btn" onclick="logout()">退出 / Logout</button>
     </div>
   </div>
   <div class="content" id="mainContent"></div>
@@ -194,14 +195,17 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
     <button onclick="switchTab('list')" id="tabList">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 14l2 2 4-4"/></svg>
       报告列表
+      <small>Reports</small>
     </button>
     <button onclick="switchTab('new')" id="tabNew">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8m-4-4h8"/></svg>
       新建报告
+      <small>New</small>
     </button>
     <button onclick="switchTab('me')" id="tabMe">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       我的
+      <small>Me</small>
     </button>
   </div>
 </div>
@@ -225,10 +229,10 @@ const APP = {
 
 // ===== DEFAULT USERS =====
 const USERS = {
-  'admin': { password: '123456', role: 'supervisor', name: '管理员' },
-  'inspector1': { password: '123456', role: 'inspector', name: '质检员1' },
-  'inspector2': { password: '123456', role: 'inspector', name: '质检员2' },
-  'supervisor1': { password: '123456', role: 'supervisor', name: '主管1' }
+  'admin': { password: '123456', role: 'supervisor', name: '管理员 Admin' },
+  'inspector1': { password: '123456', role: 'inspector', name: '质检员1 Inspector 1' },
+  'inspector2': { password: '123456', role: 'inspector', name: '质检员2 Inspector 2' },
+  'supervisor1': { password: '123456', role: 'supervisor', name: '主管1 Supervisor 1' }
 };
 
 // ===== INSPECTION ITEMS =====
@@ -252,16 +256,16 @@ const INSPECT_ITEMS = [
 
 // ===== PHOTO SLOTS =====
 const PHOTO_SLOTS = [
-  '签字样板照片','纸盒标签','纸箱条形码',
-  '托盘标','托盘标条形码','背面喷码信息',
-  '整托照片','每包重量','托盘含水率',
-  '长度测量1','长度测量2','长度测量3',
-  '宽度测量1','宽度测量2','宽度测量3',
-  '厚度测量1','厚度测量2','厚度测量3',
-  '拼装照片1','拼装照片2','拼装照片3','拼装照片4',
-  '光泽度照片1','光泽度照片2',
-  '倒角检查-长边','倒角检查-短边',
-  '纸盒照片','背膜花纹','其他'
+  '签字样板照片 / Signed Sample','纸盒标签 / Box Label','纸箱条形码 / Carton Barcode',
+  '托盘标 / Pallet Label','托盘标条形码 / Pallet Label Barcode','背面喷码信息 / Backside Inkjet',
+  '整托照片 / Full Pallet','每包重量 / Box Weight','托盘含水率 / Pallet Moisture',
+  '长度测量1 / Length 1','长度测量2 / Length 2','长度测量3 / Length 3',
+  '宽度测量1 / Width 1','宽度测量2 / Width 2','宽度测量3 / Width 3',
+  '厚度测量1 / Thickness 1','厚度测量2 / Thickness 2','厚度测量3 / Thickness 3',
+  '拼装照片1 / Assembly 1','拼装照片2 / Assembly 2','拼装照片3 / Assembly 3','拼装照片4 / Assembly 4',
+  '光泽度照片1 / Gloss 1','光泽度照片2 / Gloss 2',
+  '倒角检查-长边 / Chamfer-Long','倒角检查-短边 / Chamfer-Short',
+  '纸盒照片 / Cardboard Box','背膜花纹 / Back Film Texture','其他 / Other'
 ];
 
 // ===== IndexedDB =====
@@ -283,7 +287,7 @@ function openDB() {
 }
 
 async function saveReport(report) {
-  if (!APP.db) { showToast('数据库未就绪，请刷新页面', 'error'); return; }
+  if (!APP.db) { showToast('数据库未就绪，请刷新页面 / Database not ready, please refresh', 'error'); return; }
   return new Promise((resolve, reject) => {
     try {
       const tx = APP.db.transaction('reports', 'readwrite');
@@ -292,7 +296,7 @@ async function saveReport(report) {
       tx.onerror = e => reject(e);
     } catch(e) {
       console.error('saveReport error:', e);
-      showToast('保存失败: ' + e.message, 'error');
+      showToast('保存失败 / Save failed: ' + e.message, 'error');
       reject(e);
     }
   });
@@ -344,8 +348,8 @@ async function doLogin() {
   const username = document.getElementById('loginUser').value.trim();
   const password = document.getElementById('loginPass').value;
   const role = document.getElementById('loginRole').value;
-  if (!username) { showToast('请输入用户名', 'error'); return; }
-  if (!password) { showToast('请输入密码', 'error'); return; }
+  if (!username) { showToast('请输入用户名 / Please enter username', 'error'); return; }
+  if (!password) { showToast('请输入密码 / Please enter password', 'error'); return; }
 
   // Ensure DB is ready
   if (!dbReady) {
@@ -360,10 +364,10 @@ async function doLogin() {
   const user = USERS[username];
   if (user) {
     if (user.password !== password) {
-      showToast('密码错误', 'error'); return;
+      showToast('密码错误 / Incorrect password', 'error'); return;
     }
     if (user.role !== role) {
-      showToast('角色不匹配，该用户角色为: ' + (user.role === 'supervisor' ? '主管' : '质检员'), 'error'); return;
+      showToast('角色不匹配，用户角色为: ' + (user.role === 'supervisor' ? '主管 Supervisor' : '质检员 Inspector'), 'error'); return;
     }
   }
   // Allow non-predefined users to login with any password
@@ -373,11 +377,11 @@ async function doLogin() {
     document.getElementById('loginPage').classList.remove('active');
     document.getElementById('mainApp').classList.add('active');
     document.getElementById('userBadge').textContent =
-      `${APP.user.name} (${role === 'supervisor' ? '主管' : '质检员'})`;
+      `${APP.user.name} (${role === 'supervisor' ? '主管 Supervisor' : '质检员 Inspector'})`;
     switchTab('list');
   } catch(e) {
     console.error('Login render error:', e);
-    showToast('登录出错: ' + e.message, 'error');
+    showToast('登录出错 / Login error: ' + e.message, 'error');
   }
 }
 
@@ -451,7 +455,7 @@ function createEmptyReport() {
 
 function startNewReport() {
   if (APP.user.role === 'supervisor') {
-    showToast('主管无法新建报告', 'error');
+    showToast('主管无法新建报告 / Supervisors cannot create reports', 'error');
     switchTab('list');
     return;
   }
@@ -473,15 +477,15 @@ function renderReportForm() {
   const ro = isReadOnly ? 'readonly' : '';
   const dis = isReadOnly ? 'disabled' : '';
 
-  document.getElementById('headerTitle').textContent = r.status === 'draft' ? '编辑报告' : '查看报告';
+  document.getElementById('headerTitle').textContent = r.status === 'draft' ? '编辑报告 / Edit Report' : '查看报告 / View Report';
 
   let html = `
   <!-- STEP TABS -->
   <div class="tabs">
-    <button class="active" onclick="showFormStep(0,this)">基本信息</button>
-    <button onclick="showFormStep(1,this)">尺寸检测</button>
-    <button onclick="showFormStep(2,this)">检验项目</button>
-    <button onclick="showFormStep(3,this)">照片</button>
+    <button class="active" onclick="showFormStep(0,this)">基本信息 / Basic</button>
+    <button onclick="showFormStep(1,this)">尺寸检测 / Dimensions</button>
+    <button onclick="showFormStep(2,this)">检验项目 / Items</button>
+    <button onclick="showFormStep(3,this)">照片 / Photos</button>
   </div>
 
   <!-- STEP 0: Basic Info -->
@@ -491,35 +495,35 @@ function renderReportForm() {
       <div class="card-body">
         <div class="form-row">
           <div class="field"><label>日期 Date</label><input type="date" value="${r.date}" onchange="updateField('date',this.value)" ${ro}></div>
-          <div class="field"><label>PO订单号</label><input type="text" value="${r.poOrderNo}" onchange="updateField('poOrderNo',this.value)" placeholder="如: 816529" ${ro}></div>
+          <div class="field"><label>PO订单号 / PO Order No.</label><input type="text" value="${r.poOrderNo}" onchange="updateField('poOrderNo',this.value)" placeholder="如 / e.g.: 816529" ${ro}></div>
         </div>
         <div class="form-row">
-          <div class="field"><label>彩膜型号 Color Film</label><input type="text" value="${r.colorFilmModel}" onchange="updateField('colorFilmModel',this.value)" placeholder="如: LQ15179-1" ${ro}></div>
+          <div class="field"><label>彩膜型号 Color Film</label><input type="text" value="${r.colorFilmModel}" onchange="updateField('colorFilmModel',this.value)" placeholder="如 / e.g.: LQ15179-1" ${ro}></div>
           <div class="field"><label>产品类别 Product Type</label>
             <select onchange="updateField('productType',this.value)" ${dis}>
               <option value="SPC" ${r.productType==='SPC'?'selected':''}>SPC</option>
               <option value="WPC" ${r.productType==='WPC'?'selected':''}>WPC</option>
               <option value="LVT" ${r.productType==='LVT'?'selected':''}>LVT</option>
-              <option value="Other" ${r.productType==='Other'?'selected':''}>其他</option>
+              <option value="Other" ${r.productType==='Other'?'selected':''}>其他 / Other</option>
             </select>
           </div>
         </div>
         <div class="form-row">
-          <div class="field"><label>尺寸 Size</label><input type="text" value="${r.size}" onchange="updateField('size',this.value)" placeholder="如: 1219*182*4.0+1.0 IXPE" ${ro}></div>
-          <div class="field"><label>耐磨层厚度 Wear Layer</label><input type="text" value="${r.wearLayerThickness}" onchange="updateField('wearLayerThickness',this.value)" placeholder="如: 0.5" ${ro}></div>
+          <div class="field"><label>尺寸 Size</label><input type="text" value="${r.size}" onchange="updateField('size',this.value)" placeholder="如 / e.g.: 1219*182*4.0+1.0 IXPE" ${ro}></div>
+          <div class="field"><label>耐磨层厚度 Wear Layer</label><input type="text" value="${r.wearLayerThickness}" onchange="updateField('wearLayerThickness',this.value)" placeholder="如 / e.g.: 0.5" ${ro}></div>
         </div>
         <div class="form-row">
           <div class="field"><label>扣型 Lock Type</label>
             <select onchange="updateField('lockType',this.value)" ${dis}>
               <option value="I4F" ${r.lockType==='I4F'?'selected':''}>I4F</option>
               <option value="Unilin" ${r.lockType==='Unilin'?'selected':''}>Unilin</option>
-              <option value="Other" ${r.lockType==='Other'?'selected':''}>其他</option>
+              <option value="Other" ${r.lockType==='Other'?'selected':''}>其他 / Other</option>
             </select>
           </div>
-          <div class="field"><label>压纹 Embossed</label><input type="text" value="${r.embossedTexture}" onchange="updateField('embossedTexture',this.value)" placeholder="如: ST01-B" ${ro}></div>
+          <div class="field"><label>压纹 Embossed</label><input type="text" value="${r.embossedTexture}" onchange="updateField('embossedTexture',this.value)" placeholder="如 / e.g.: ST01-B" ${ro}></div>
         </div>
         <div class="form-row">
-          <div class="field"><label>型号 Model</label><input type="text" value="${r.model}" onchange="updateField('model',this.value)" placeholder="如: P20_400" ${ro}></div>
+          <div class="field"><label>型号 Model</label><input type="text" value="${r.model}" onchange="updateField('model',this.value)" placeholder="如 / e.g.: P20_400" ${ro}></div>
         </div>
       </div>
     </div>
@@ -528,10 +532,10 @@ function renderReportForm() {
       <div class="card-header">👁 外观检测 Appearance</div>
       <div class="card-body">
         <div class="form-row">
-          <div class="field"><label>测量数量(片)</label><input type="number" value="${r.appearance.testCount}" onchange="updateNested('appearance','testCount',this.value)" ${ro}></div>
-          <div class="field"><label>不合格(片)</label><input type="number" value="${r.appearance.defectCount}" onchange="updateNested('appearance','defectCount',this.value)" ${ro}></div>
+          <div class="field"><label>测量数量(片) / Test Count</label><input type="number" value="${r.appearance.testCount}" onchange="updateNested('appearance','testCount',this.value)" ${ro}></div>
+          <div class="field"><label>不合格(片) / Defect Count</label><input type="number" value="${r.appearance.defectCount}" onchange="updateNested('appearance','defectCount',this.value)" ${ro}></div>
         </div>
-        <div class="field"><label>检测值说明</label><input type="text" value="${r.appearance.testValue||''}" onchange="updateNested('appearance','testValue',this.value)" placeholder="详见抽检照片" ${ro}></div>
+        <div class="field"><label>检测值说明 / Test Value Note</label><input type="text" value="${r.appearance.testValue||''}" onchange="updateNested('appearance','testValue',this.value)" placeholder="详见抽检照片 / Refer to inspection photos" ${ro}></div>
       </div>
     </div>
 
@@ -560,10 +564,10 @@ function renderReportForm() {
   <!-- STEP 1: Dimensions -->
   <div class="form-step" id="step1" style="display:none">
     <div class="card">
-      <div class="card-header">📏 尺寸特征和偏差限制</div>
+      <div class="card-header">📏 尺寸特征和偏差限制 / Dimensional Characteristics</div>
       <div class="card-body" style="overflow-x:auto">
         <table class="measure-table">
-          <tr><th>项目</th><th>标准</th>${Array.from({length:10},(_,i)=>`<th>${i+1}</th>`).join('')}<th>判定</th></tr>
+          <tr><th>项目 Item</th><th>标准 Standard</th>${Array.from({length:10},(_,i)=>`<th>${i+1}</th>`).join('')}<th>判定 Result</th></tr>
           ${renderDimRow('length','长度 Length', r.dimensions.lengthStd, r.dimensions.length, isReadOnly)}
           ${renderDimRow('width','宽度 Width', r.dimensions.widthStd, r.dimensions.width, isReadOnly)}
           ${renderDimRow('thickness','厚度 Thickness', r.dimensions.thicknessStd, r.dimensions.thickness, isReadOnly)}
@@ -583,14 +587,14 @@ function renderReportForm() {
             <div class="item-name">${item.name}<small>${item.en} | ${item.std}</small></div>
             <div class="inspect-result">
               <button class="${(r.inspectItems[item.key]||'') === 'PASS' ? 'pass-active' : ''}"
-                onclick="setInspect('${item.key}','PASS',this)" ${dis}>合格</button>
+                onclick="setInspect('${item.key}','PASS',this)" ${dis}>合格 Pass</button>
               <button class="${(r.inspectItems[item.key]||'') === 'FAIL' ? 'fail-active' : ''}"
-                onclick="setInspect('${item.key}','FAIL',this)" ${dis}>不合格</button>
+                onclick="setInspect('${item.key}','FAIL',this)" ${dis}>不合格 Fail</button>
               <button class="${(r.inspectItems[item.key]||'') === 'N/A' ? 'na-active' : ''}"
                 onclick="setInspect('${item.key}','N/A',this)" ${dis}>N/A</button>
             </div>
           </div>
-          <input class="remark-input" placeholder="备注..." value="${r.inspectRemarks?.[item.key]||''}"
+          <input class="remark-input" placeholder="备注 / Remark..." value="${r.inspectRemarks?.[item.key]||''}"
             onchange="setInspectRemark('${item.key}',this.value)" ${ro}>
         `).join('')}
       </div>
@@ -601,10 +605,10 @@ function renderReportForm() {
       <div class="card-body">
         <div class="final-result">
           <button class="${r.finalResult==='pass'?'pass-selected':''}" onclick="setFinalResult('pass',this)" ${dis}>
-            ✅ 检验合格<br><small>可以发货</small>
+            ✅ 检验合格 Pass<br><small>可以发货 / Can ship</small>
           </button>
           <button class="${r.finalResult==='fail'?'fail-selected':''}" onclick="setFinalResult('fail',this)" ${dis}>
-            ❌ 检验不合格<br><small>不能发货</small>
+            ❌ 检验不合格 Fail<br><small>不能发货 / Cannot ship</small>
           </button>
         </div>
       </div>
@@ -636,18 +640,18 @@ function renderReportForm() {
   <!-- ACTION BUTTONS -->
   <div style="padding:10px 0 20px;display:flex;gap:10px;flex-wrap:wrap">
     ${!isReadOnly ? `
-      <button class="btn btn-outline btn-sm" onclick="saveDraft()" style="flex:1">💾 保存草稿</button>
-      <button class="btn btn-primary btn-sm" onclick="submitReport()" style="flex:1">📤 提交审核</button>
+      <button class="btn btn-outline btn-sm" onclick="saveDraft()" style="flex:1">💾 保存草稿 / Save Draft</button>
+      <button class="btn btn-primary btn-sm" onclick="submitReport()" style="flex:1">📤 提交审核 / Submit</button>
     ` : ''}
     ${APP.user.role === 'supervisor' && r.status === 'submitted' ? `
-      <button class="btn btn-success btn-sm" onclick="approveReport()" style="flex:1">✅ 审核通过</button>
-      <button class="btn btn-danger btn-sm" onclick="rejectReport()" style="flex:1">❌ 驳回</button>
+      <button class="btn btn-success btn-sm" onclick="approveReport()" style="flex:1">✅ 审核通过 / Approve</button>
+      <button class="btn btn-danger btn-sm" onclick="rejectReport()" style="flex:1">❌ 驳回 / Reject</button>
     ` : ''}
     ${r.status === 'approved' ? `
-      <button class="btn btn-primary btn-sm" onclick="generatePDF()" style="flex:1">📄 生成PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="generatePDF()" style="flex:1">📄 生成PDF / Generate</button>
     ` : ''}
-    <button class="btn btn-outline btn-sm" onclick="generatePDF()" style="flex:1">👁 预览PDF</button>
-    <button class="btn btn-outline btn-sm" onclick="switchTab('list')" style="flex:1">← 返回</button>
+    <button class="btn btn-outline btn-sm" onclick="generatePDF()" style="flex:1">👁 预览PDF / Preview</button>
+    <button class="btn btn-outline btn-sm" onclick="switchTab('list')" style="flex:1">← 返回 / Back</button>
   </div>`;
 
   document.getElementById('mainContent').innerHTML = html;
@@ -729,7 +733,7 @@ document.getElementById('photoInput').addEventListener('change', function(e) {
       renderReportForm();
       // Restore to photos tab
       showFormStep(3, document.querySelectorAll('.tabs button')[3]);
-      showToast('照片已添加', 'success');
+      showToast('照片已添加 / Photo added', 'success');
     };
     img.src = ev.target.result;
   };
@@ -750,18 +754,18 @@ async function saveDraft() {
   r.updatedAt = new Date().toISOString();
   await saveReport(r);
   APP.reports = await getAllReports();
-  showToast('草稿已保存', 'success');
+  showToast('草稿已保存 / Draft saved', 'success');
 }
 
 async function submitReport() {
   const r = APP.currentReport;
-  if (!r.poOrderNo) { showToast('请填写PO订单号', 'error'); return; }
+  if (!r.poOrderNo) { showToast('请填写PO订单号 / Please enter PO order number', 'error'); return; }
   r.status = 'submitted';
   r.updatedAt = new Date().toISOString();
   r.inspector = APP.user.name;
   await saveReport(r);
   APP.reports = await getAllReports();
-  showToast('报告已提交审核', 'success');
+  showToast('报告已提交审核 / Report submitted for review', 'success');
   switchTab('list');
 }
 
@@ -772,7 +776,7 @@ async function approveReport() {
   r.updatedAt = new Date().toISOString();
   await saveReport(r);
   APP.reports = await getAllReports();
-  showToast('报告已审核通过', 'success');
+  showToast('报告已审核通过 / Report approved', 'success');
   switchTab('list');
 }
 
@@ -783,14 +787,14 @@ async function rejectReport() {
   r.updatedAt = new Date().toISOString();
   await saveReport(r);
   APP.reports = await getAllReports();
-  showToast('报告已驳回', 'error');
+  showToast('报告已驳回 / Report rejected', 'error');
   switchTab('list');
 }
 
 // ===== REPORT LIST =====
 async function renderReportList() {
   APP.reports = await getAllReports();
-  document.getElementById('headerTitle').textContent = APP.user.role === 'supervisor' ? '审核中心' : '我的报告';
+  document.getElementById('headerTitle').textContent = APP.user.role === 'supervisor' ? '审核中心 / Review Center' : '我的报告 / My Reports';
 
   let reports = APP.reports;
   if (APP.user.role === 'inspector') {
@@ -798,17 +802,17 @@ async function renderReportList() {
   }
   reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
-  const statusLabels = { draft: '草稿', submitted: '待审核', approved: '已通过', rejected: '已驳回' };
+  const statusLabels = { draft: '草稿 Draft', submitted: '待审核 Pending Review', approved: '已通过 Approved', rejected: '已驳回 Rejected' };
   const statusClass = { draft: 'badge-draft', submitted: 'badge-submitted', approved: 'badge-approved', rejected: 'badge-rejected' };
 
   let filterHtml = '';
   if (APP.user.role === 'supervisor') {
     filterHtml = `
     <div class="tabs" style="margin-bottom:12px">
-      <button class="active" onclick="filterReports('all',this)">全部</button>
-      <button onclick="filterReports('submitted',this)">待审核</button>
-      <button onclick="filterReports('approved',this)">已通过</button>
-      <button onclick="filterReports('rejected',this)">已驳回</button>
+      <button class="active" onclick="filterReports('all',this)">全部 / All</button>
+      <button onclick="filterReports('submitted',this)">待审核 / Pending</button>
+      <button onclick="filterReports('approved',this)">已通过 / Approved</button>
+      <button onclick="filterReports('rejected',this)">已驳回 / Rejected</button>
     </div>`;
   }
 
@@ -816,7 +820,7 @@ async function renderReportList() {
     document.getElementById('mainContent').innerHTML = filterHtml + `
       <div class="empty-state">
         <div class="icon">📋</div>
-        <p>${APP.user.role === 'supervisor' ? '暂无待审核报告' : '暂无报告，点击下方"新建报告"开始'}</p>
+        <p>${APP.user.role === 'supervisor' ? '暂无待审核报告 / No reports pending review' : '暂无报告，点击下方“新建报告”开始 / No reports yet, tap “New” below to start'}</p>
       </div>`;
     return;
   }
@@ -827,8 +831,8 @@ async function renderReportList() {
       <div class="report-item" onclick="editReport('${r.id}')">
         <div style="width:42px;height:42px;background:${r.finalResult==='pass'?'#d4edda':'#f8d7da'};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem">${r.finalResult==='pass'?'✅':'❌'}</div>
         <div class="report-info">
-          <h3>PO: ${r.poOrderNo || '未填写'} - ${r.colorFilmModel || ''}</h3>
-          <p>${r.date} · ${r.inspector || '未指定'} · ${r.productType}</p>
+          <h3>PO: ${r.poOrderNo || '未填写 / N/A'} - ${r.colorFilmModel || ''}</h3>
+          <p>${r.date} · ${r.inspector || '未指定 / Unassigned'} · ${r.productType}</p>
         </div>
         <span class="badge ${statusClass[r.status]}">${statusLabels[r.status]}</span>
       </div>
@@ -844,14 +848,14 @@ function filterReports(status, btn) {
   items.forEach(item => {
     if (status === 'all') { item.style.display = 'flex'; return; }
     const badge = item.querySelector('.badge');
-    const map = { submitted: '待审核', approved: '已通过', rejected: '已驳回', draft: '草稿' };
+    const map = { submitted: '待审核 Pending Review', approved: '已通过 Approved', rejected: '已驳回 Rejected', draft: '草稿 Draft' };
     item.style.display = badge.textContent === map[status] ? 'flex' : 'none';
   });
 }
 
 // ===== PROFILE =====
 function renderProfile() {
-  document.getElementById('headerTitle').textContent = '个人中心';
+  document.getElementById('headerTitle').textContent = '个人中心 / Profile';
   const r = APP.reports.filter(r => APP.user.role === 'inspector' ? r.createdBy === APP.user.username : true);
   const stats = {
     total: r.length,
@@ -862,40 +866,40 @@ function renderProfile() {
   };
   document.getElementById('mainContent').innerHTML = `
     <div class="card">
-      <div class="card-header">👤 个人信息</div>
+      <div class="card-header">👤 个人信息 / Profile Info</div>
       <div class="card-body">
-        <p style="margin-bottom:8px"><strong>用户名：</strong>${APP.user.username}</p>
-        <p style="margin-bottom:8px"><strong>姓名：</strong>${APP.user.name}</p>
-        <p><strong>角色：</strong>${APP.user.role === 'supervisor' ? '主管 Supervisor' : '质检员 Inspector'}</p>
+        <p style="margin-bottom:8px"><strong>用户名 Username:</strong> ${APP.user.username}</p>
+        <p style="margin-bottom:8px"><strong>姓名 Name:</strong> ${APP.user.name}</p>
+        <p><strong>角色 Role:</strong> ${APP.user.role === 'supervisor' ? '主管 Supervisor' : '质检员 Inspector'}</p>
       </div>
     </div>
     <div class="card">
-      <div class="card-header">📊 统计</div>
+      <div class="card-header">📊 统计 / Statistics</div>
       <div class="card-body">
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center">
-          <div style="padding:12px;background:#e8f0fe;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#1a5276">${stats.total}</div><div style="font-size:.78rem;color:#666">总报告</div></div>
-          <div style="padding:12px;background:#cce5ff;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#004085">${stats.submitted}</div><div style="font-size:.78rem;color:#666">待审核</div></div>
-          <div style="padding:12px;background:#d4edda;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#155724">${stats.approved}</div><div style="font-size:.78rem;color:#666">已通过</div></div>
-          <div style="padding:12px;background:#f8d7da;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#721c24">${stats.rejected}</div><div style="font-size:.78rem;color:#666">已驳回</div></div>
+          <div style="padding:12px;background:#e8f0fe;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#1a5276">${stats.total}</div><div style="font-size:.78rem;color:#666">总报告 Total</div></div>
+          <div style="padding:12px;background:#cce5ff;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#004085">${stats.submitted}</div><div style="font-size:.78rem;color:#666">待审核 Pending</div></div>
+          <div style="padding:12px;background:#d4edda;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#155724">${stats.approved}</div><div style="font-size:.78rem;color:#666">已通过 Approved</div></div>
+          <div style="padding:12px;background:#f8d7da;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#721c24">${stats.rejected}</div><div style="font-size:.78rem;color:#666">已驳回 Rejected</div></div>
         </div>
       </div>
     </div>
     <div class="card">
-      <div class="card-header">⚙️ 设置</div>
+      <div class="card-header">⚙️ 设置 / Settings</div>
       <div class="card-body">
-        <button class="btn btn-outline" onclick="clearAllData()" style="margin-bottom:8px">🗑 清除所有数据</button>
-        <p style="font-size:.75rem;color:#999;margin-top:8px">版本 v1.0.0 · 森雅国际有限公司</p>
+        <button class="btn btn-outline" onclick="clearAllData()" style="margin-bottom:8px">🗑 清除所有数据 / Clear All Data</button>
+        <p style="font-size:.75rem;color:#999;margin-top:8px">版本 Version v1.0.0 · 森雅国际有限公司 Senia International Co., Ltd.</p>
       </div>
     </div>`;
 }
 
 async function clearAllData() {
-  if (!confirm('确定要清除所有报告数据吗？此操作不可恢复！')) return;
+  if (!confirm('确定要清除所有报告数据吗？此操作不可恢复！\nAre you sure you want to clear all report data? This cannot be undone.')) return;
   const tx = APP.db.transaction('reports', 'readwrite');
   tx.objectStore('reports').clear();
   tx.oncomplete = async () => {
     APP.reports = [];
-    showToast('数据已清除', 'info');
+    showToast('数据已清除 / Data cleared', 'info');
     renderProfile();
   };
 }
@@ -988,8 +992,8 @@ const PHOTO_LABELS_4L = [
 // ===== PDF GENERATION (html2canvas) =====
 async function generatePDF() {
   const r = APP.currentReport;
-  if (!r) { showToast('没有报告数据', 'error'); return; }
-  showToast('正在生成PDF，请稍候...', 'info');
+  if (!r) { showToast('没有报告数据 / No report data', 'error'); return; }
+  showToast('正在生成PDF，请稍候... / Generating PDF, please wait...', 'info');
 
   // Build hidden container
   let container = document.getElementById('pdfRenderArea');
@@ -1277,7 +1281,7 @@ async function generatePDF() {
   container.remove();
   const filename = `${r.poOrderNo || 'Report'}-${r.colorFilmModel || ''}-${r.date}.pdf`;
   doc.save(filename);
-  showToast('PDF已生成！', 'success');
+  showToast('PDF已生成！ / PDF generated!', 'success');
 }
 
 // ===== SERVICE WORKER =====
