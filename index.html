@@ -1226,9 +1226,9 @@ async function generatePDF() {
 
   // Render pages
   const pageConfigs = [
-    { html: buildPage1(), orientation: 'landscape', widthPx: 1123, pdfW: 297, pdfH: 210, imageFormat: 'PNG', renderScale: 3.4 },
-    { html: buildPhotoPage(0, 15), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.8, imageQuality: 0.95 },
-    { html: buildPhotoPage(15, 29), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.8, imageQuality: 0.95 },
+    { html: buildPage1(), orientation: 'landscape', widthPx: 1123, pdfW: 297, pdfH: 210, imageFormat: 'PNG', renderScale: 3.8 },
+    { html: buildPhotoPage(0, 15), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.9, imageQuality: 0.96 },
+    { html: buildPhotoPage(15, 29), orientation: 'portrait', widthPx: 794, pdfW: 210, pdfH: 297, imageFormat: 'JPEG', renderScale: 2.9, imageQuality: 0.96 },
   ];
 
   container.innerHTML = S + pageConfigs.map(p => p.html).join('');
