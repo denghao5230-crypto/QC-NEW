@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>森雅验货系统</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+/* ===== CSS Reset & Base ===== */
+*{margin:0;padding:0;box-sizing:border-box}
+html{font-size:14px;-webkit-text-size-adjust:100%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;min-height:100vh}
+input,select,textarea,button{font-family:inherit;font-size:inherit}
+
+/* ===== Layout ===== */
+.page{display:none;min-height:100vh}
+.page.active{display:flex;flex-direction:column}
+.header{background:linear-gradient(135deg,#1a5276,#2980b9);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.header h1{font-size:1.1rem;font-weight:600}
+.header-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:.85rem}
+.header-btn:active{background:rgba(255,255,255,.35)}
+.content{flex:1;padding:12px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.bottom-nav{display:flex;background:#fff;border-top:1px solid #e0e0e0;position:sticky;bottom:0;z-index:100}
+.bottom-nav button{flex:1;padding:10px 0;border:none;background:none;font-size:.75rem;color:#888;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px}
+.bottom-nav button.active{color:#1a5276}
+.bottom-nav button svg{width:22px;height:22px}
+
+/* ===== Login Page ===== */
+.login-page{background:linear-gradient(135deg,#1a5276 0%,#2980b9 50%,#3498db 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.login-logo{width:80px;height:80px;background:rgba(255,255,255,.15);border-radius:20px;display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.login-logo span{font-size:2.5rem;color:#fff}
+.login-title{color:#fff;font-size:1.4rem;margin-bottom:6px;font-weight:700}
+.login-subtitle{color:rgba(255,255,255,.7);font-size:.85rem;margin-bottom:30px}
+.login-card{background:#fff;border-radius:16px;padding:28px 24px;width:100%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+.login-card h2{text-align:center;margin-bottom:20px;color:#1a5276;font-size:1.1rem}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:.85rem;color:#666;margin-bottom:6px;font-weight:500}
+.form-group input,.form-group select{width:100%;padding:10px 14px;border:1.5px solid #ddd;border-radius:10px;font-size:.95rem;transition:border-color .2s}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:#2980b9}
+.btn{width:100%;padding:12px;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;transition:all .2s}
+.btn-primary{background:linear-gradient(135deg,#1a5276,#2980b9);color:#fff}
+.btn-primary:active{transform:scale(.98);opacity:.9}
+.btn-success{background:linear-gradient(135deg,#27ae60,#2ecc71);color:#fff}
+.btn-danger{background:linear-gradient(135deg,#c0392b,#e74c3c);color:#fff}
+.btn-outline{background:#fff;color:#1a5276;border:1.5px solid #1a5276}
+.btn-sm{padding:8px 16px;font-size:.85rem;width:auto;border-radius:8px}
+
+/* ===== Card ===== */
+.card{background:#fff;border-radius:12px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}
+.card-header{padding:12px 16px;background:#f8f9fa;border-bottom:1px solid #eee;font-weight:600;font-size:.95rem;color:#1a5276;display:flex;align-items:center;gap:8px}
+.card-body{padding:14px 16px}
+
+/* ===== Form Elements ===== */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.form-row.three{grid-template-columns:1fr 1fr 1fr}
+.form-row.full{grid-template-columns:1fr}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:.78rem;color:#888;margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:.9rem;background:#fafafa}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:#2980b9;background:#fff}
+.field textarea{resize:vertical;min-height:50px}
+
+/* ===== Measurement Table ===== */
+.measure-table{width:100%;border-collapse:collapse;font-size:.78rem}
+.measure-table th,.measure-table td{border:1px solid #ddd;padding:6px 4px;text-align:center}
+.measure-table th{background:#e8f0fe;color:#1a5276;font-weight:600;white-space:nowrap}
+.measure-table input{width:100%;border:none;text-align:center;padding:4px 2px;font-size:.82rem;background:transparent}
+.measure-table input:focus{outline:none;background:#e8f0fe}
+
+/* ===== Inspection Item Row ===== */
+.inspect-item{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0;gap:10px}
+.inspect-item:last-child{border-bottom:none}
+.inspect-item .item-name{flex:1;font-size:.85rem;font-weight:500}
+.inspect-item .item-name small{display:block;color:#999;font-size:.72rem;font-weight:400}
+.inspect-result{display:flex;gap:4px}
+.inspect-result button{padding:5px 12px;border:1.5px solid #ddd;border-radius:6px;font-size:.8rem;cursor:pointer;background:#fff;font-weight:500}
+.inspect-result button.pass-active{background:#27ae60;color:#fff;border-color:#27ae60}
+.inspect-result button.fail-active{background:#e74c3c;color:#fff;border-color:#e74c3c}
+.inspect-result button.na-active{background:#95a5a6;color:#fff;border-color:#95a5a6}
+
+/* ===== Photo Grid ===== */
+.photo-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.photo-slot{border:2px dashed #ccc;border-radius:10px;aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;background:#fafafa;transition:all .2s}
+.photo-slot:active{background:#e8f0fe;border-color:#2980b9}
+.photo-slot .label{font-size:.65rem;color:#999;text-align:center;padding:2px 4px;line-height:1.2}
+.photo-slot .icon{font-size:1.5rem;color:#bbb;margin-bottom:2px}
+.photo-slot img{width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0}
+.photo-slot .delete-photo{position:absolute;top:2px;right:2px;width:22px;height:22px;background:rgba(231,76,60,.85);color:#fff;border:none;border-radius:50%;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2}
+
+/* ===== Report List ===== */
+.report-item{display:flex;align-items:center;padding:14px 16px;background:#fff;border-radius:12px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);gap:12px;cursor:pointer}
+.report-item:active{background:#f8f9fa}
+.report-info{flex:1}
+.report-info h3{font-size:.92rem;font-weight:600;margin-bottom:3px}
+.report-info p{font-size:.78rem;color:#888}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:600}
+.badge-draft{background:#fef3cd;color:#856404}
+.badge-submitted{background:#cce5ff;color:#004085}
+.badge-approved{background:#d4edda;color:#155724}
+.badge-rejected{background:#f8d7da;color:#721c24}
+
+/* ===== Tabs ===== */
+.tabs{display:flex;background:#fff;border-radius:10px;padding:3px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.tabs button{flex:1;padding:8px;border:none;background:none;border-radius:8px;font-size:.85rem;cursor:pointer;font-weight:500;color:#666;transition:all .2s}
+.tabs button.active{background:#1a5276;color:#fff}
+
+/* ===== Modal ===== */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:500px;max-height:80vh;overflow-y:auto;padding:20px}
+.modal h3{margin-bottom:16px;font-size:1.05rem;color:#1a5276}
+.modal-actions{display:flex;gap:10px;margin-top:16px}
+.modal-actions .btn{flex:1}
+
+/* ===== Toast ===== */
+.toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:10px;color:#fff;font-size:.88rem;z-index:300;opacity:0;transition:opacity .3s;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.toast.show{opacity:1}
+.toast-success{background:#27ae60}
+.toast-error{background:#e74c3c}
+.toast-info{background:#2980b9}
+
+/* ===== Empty State ===== */
+.empty-state{text-align:center;padding:40px 20px;color:#aaa}
+.empty-state .icon{font-size:3rem;margin-bottom:10px}
+.empty-state p{font-size:.9rem}
+
+/* ===== Responsive ===== */
+@media(min-width:768px){
+  .content{max-width:720px;margin:0 auto}
+  .photo-grid{grid-template-columns:repeat(3,1fr)}
+  .form-row{grid-template-columns:1fr 1fr 1fr}
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#ccc;border-radius:2px}
+
+/* ===== Packaging Section ===== */
+.pkg-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;font-size:.85rem}
+.pkg-row input{width:50px;text-align:center;padding:6px;border:1px solid #ddd;border-radius:6px}
+.pkg-row span{color:#666}
+
+/* ===== Final Result ===== */
+.final-result{display:flex;gap:10px;margin-top:10px}
+.final-result button{flex:1;padding:14px;border:2px solid #ddd;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer;background:#fff;transition:all .2s}
+.final-result button.pass-selected{background:#27ae60;color:#fff;border-color:#27ae60}
+.final-result button.fail-selected{background:#e74c3c;color:#fff;border-color:#e74c3c}
+
+.remark-input{width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:.8rem;margin-top:4px}
+</style>
+</head>
+<body>
+
+<!-- ==================== LOGIN PAGE ==================== -->
+<div id="loginPage" class="page login-page active">
+  <div class="login-logo"><span>验</span></div>
+  <div class="login-title">森雅国际验货系统</div>
+  <div class="login-subtitle">Senia International Inspection System</div>
+  <div class="login-card">
+    <h2>用户登录</h2>
+    <div class="form-group">
+      <label>用户名</label>
+      <input type="text" id="loginUser" placeholder="请输入用户名" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="loginPass" placeholder="请输入密码" autocomplete="current-password">
+    </div>
+    <div class="form-group">
+      <label>角色</label>
+      <select id="loginRole">
+        <option value="inspector">质检员 Inspector</option>
+        <option value="supervisor">主管 Supervisor</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">登 录</button>
+  </div>
+</div>
+
+<!-- ==================== MAIN APP ==================== -->
+<div id="mainApp" class="page">
+  <div class="header">
+    <h1 id="headerTitle">验货报告</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span id="userBadge" style="font-size:.78rem;opacity:.8"></span>
+      <button class="header-btn" onclick="logout()">退出</button>
+    </div>
+  </div>
+  <div class="content" id="mainContent"></div>
+  <div class="bottom-nav" id="bottomNav">
+    <button onclick="switchTab('list')" id="tabList">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 14l2 2 4-4"/></svg>
+      报告列表
+    </button>
+    <button onclick="switchTab('new')" id="tabNew">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8m-4-4h8"/></svg>
+      新建报告
+    </button>
+    <button onclick="switchTab('me')" id="tabMe">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      我的
+    </button>
+  </div>
+</div>
+
+<!-- ==================== TOAST ==================== -->
+<div id="toast" class="toast"></div>
+
+<!-- ==================== HIDDEN FILE INPUT ==================== -->
+<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
+
+<script>
+// ===== APPLICATION STATE =====
+const APP = {
+  user: null,         // {username, role}
+  reports: [],        // All reports
+  currentReport: null,// Report being edited
+  currentTab: 'list',
+  editingPhotoSlot: null,
+  db: null
+};
+
+// ===== DEFAULT USERS =====
+const USERS = {
+  'admin': { password: '123456', role: 'supervisor', name: '管理员' },
+  'inspector1': { password: '123456', role: 'inspector', name: '质检员1' },
+  'inspector2': { password: '123456', role: 'inspector', name: '质检员2' },
+  'supervisor1': { password: '123456', role: 'supervisor', name: '主管1' }
+};
+
+// ===== INSPECTION ITEMS =====
+const INSPECT_ITEMS = [
+  { key: 'heightDiff', name: '高低差', en: 'Height Difference', std: '≤0.10mm' },
+  { key: 'jointGap', name: '拼接离缝', en: 'Joint Gap', std: '≤0.10mm' },
+  { key: 'colorMatch', name: '颜色对比', en: 'Color Matching', std: '签样 Signed Sample' },
+  { key: 'palletLabel', name: '托盘标', en: 'Pallet Label', std: '客户要求' },
+  { key: 'inkjet', name: '喷码', en: 'Inkjet Printing', std: '客户要求' },
+  { key: 'pallet', name: '托盘', en: 'Pallet', std: '15%' },
+  { key: 'boxWeight', name: '单包重', en: 'Box Weight', std: '订单要求' },
+  { key: 'palletWeight', name: '单拖重', en: 'Weight Per Pallet', std: '订单要求' },
+  { key: 'sampling', name: '抽样', en: 'Sampling', std: '客户要求' },
+  { key: 'frontSideMark', name: '正、侧唛', en: 'Front/Side Mark', std: '客户要求' },
+  { key: 'shippingMark', name: '端唛', en: 'Shipping Mark', std: '客户要求' },
+  { key: 'carton', name: '纸箱', en: 'Carton', std: '客户要求' },
+  { key: 'packing', name: '包装', en: 'Packing', std: '客户要求' },
+  { key: 'palletizing', name: '打托', en: 'Palletizing', std: '客户要求' },
+  { key: 'manual', name: '说明书', en: 'Manual', std: '客户要求' }
+];
+
+// ===== PHOTO SLOTS =====
+const PHOTO_SLOTS = [
+  '签字样板照片','纸盒标签','纸箱条形码',
+  '托盘标','托盘标条形码','背面喷码信息',
+  '整托照片','每包重量','托盘含水率',
+  '长度测量1','长度测量2','长度测量3',
+  '宽度测量1','宽度测量2','宽度测量3',
+  '厚度测量1','厚度测量2','厚度测量3',
+  '拼装照片1','拼装照片2','拼装照片3','拼装照片4',
+  '光泽度照片1','光泽度照片2',
+  '倒角检查-长边','倒角检查-短边',
+  '纸盒照片','背膜花纹','其他'
+];
+
+// ===== IndexedDB =====
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('InspectionDB', 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('reports')) {
+        db.createObjectStore('reports', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('users')) {
+        db.createObjectStore('users', { keyPath: 'username' });
+      }
+    };
+    req.onsuccess = e => { APP.db = e.target.result; resolve(APP.db); };
+    req.onerror = e => reject(e);
+  });
+}
+
+async function saveReport(report) {
+  if (!APP.db) { showToast('数据库未就绪，请刷新页面', 'error'); return; }
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = APP.db.transaction('reports', 'readwrite');
+      tx.objectStore('reports').put(report);
+      tx.oncomplete = () => resolve();
+      tx.onerror = e => reject(e);
+    } catch(e) {
+      console.error('saveReport error:', e);
+      showToast('保存失败: ' + e.message, 'error');
+      reject(e);
+    }
+  });
+}
+
+async function getAllReports() {
+  if (!APP.db) return [];
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = APP.db.transaction('reports', 'readonly');
+      const req = tx.objectStore('reports').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = e => reject(e);
+    } catch(e) {
+      console.error('getAllReports error:', e);
+      resolve([]);
+    }
+  });
+}
+
+async function deleteReport(id) {
+  return new Promise((resolve, reject) => {
+    const tx = APP.db.transaction('reports', 'readwrite');
+    tx.objectStore('reports').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = e => reject(e);
+  });
+}
+
+// ===== INIT =====
+let dbReady = false;
+async function init() {
+  try {
+    await openDB();
+    APP.reports = await getAllReports();
+    dbReady = true;
+    console.log('DB ready, reports loaded:', APP.reports.length);
+  } catch(e) {
+    console.error('DB init error:', e);
+    // Fallback: work without DB
+    dbReady = false;
+    APP.reports = [];
+  }
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+}
+init();
+
+// ===== LOGIN =====
+async function doLogin() {
+  const username = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const role = document.getElementById('loginRole').value;
+  if (!username) { showToast('请输入用户名', 'error'); return; }
+  if (!password) { showToast('请输入密码', 'error'); return; }
+
+  // Ensure DB is ready
+  if (!dbReady) {
+    try {
+      await init();
+    } catch(e) {
+      console.error('DB init failed on login:', e);
+    }
+  }
+
+  // Check predefined users or allow any login for demo
+  const user = USERS[username];
+  if (user) {
+    if (user.password !== password) {
+      showToast('密码错误', 'error'); return;
+    }
+    if (user.role !== role) {
+      showToast('角色不匹配，该用户角色为: ' + (user.role === 'supervisor' ? '主管' : '质检员'), 'error'); return;
+    }
+  }
+  // Allow non-predefined users to login with any password
+  APP.user = { username, role, name: user ? user.name : username };
+
+  try {
+    document.getElementById('loginPage').classList.remove('active');
+    document.getElementById('mainApp').classList.add('active');
+    document.getElementById('userBadge').textContent =
+      `${APP.user.name} (${role === 'supervisor' ? '主管' : '质检员'})`;
+    switchTab('list');
+  } catch(e) {
+    console.error('Login render error:', e);
+    showToast('登录出错: ' + e.message, 'error');
+  }
+}
+
+function logout() {
+  APP.user = null;
+  APP.currentReport = null;
+  document.getElementById('mainApp').classList.remove('active');
+  document.getElementById('loginPage').classList.add('active');
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+// ===== TAB SWITCHING =====
+function switchTab(tab) {
+  APP.currentTab = tab;
+  document.querySelectorAll('#bottomNav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  if (tab === 'list') renderReportList();
+  else if (tab === 'new') startNewReport();
+  else if (tab === 'me') renderProfile();
+}
+
+// ===== TOAST =====
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast toast-' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ===== NEW REPORT =====
+function createEmptyReport() {
+  const now = new Date();
+  return {
+    id: 'RPT-' + Date.now(),
+    date: now.toISOString().slice(0, 10),
+    poOrderNo: '',
+    colorFilmModel: '',
+    productType: 'SPC',
+    size: '',
+    wearLayerThickness: '',
+    lockType: 'I4F',
+    embossedTexture: '',
+    model: '',
+    appearance: { testCount: 24, defectCount: 0, testValue: '', result: 'PASS' },
+    dimensions: {
+      length: Array(10).fill(''),
+      width: Array(10).fill(''),
+      thickness: Array(10).fill(''),
+      gloss: Array(10).fill(''),
+      lengthStd: '±0.5mm',
+      widthStd: '±0.10mm',
+      thicknessStd: '±0.13mm',
+      glossStd: '7±1°'
+    },
+    inspectItems: {},
+    inspectRemarks: {},
+    packaging: { pcsPerBox: 12, layersPerBox: 1, boxesPerPallet: 5, layersPerPallet: 10, manualsPerBox: 0 },
+    boxWeightKg: '',
+    palletWeightKg: '',
+    finalResult: 'pass',
+    photos: {},
+    inspector: APP.user ? APP.user.name : '',
+    reviewer: '',
+    status: 'draft',
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    createdBy: APP.user ? APP.user.username : ''
+  };
+}
+
+function startNewReport() {
+  if (APP.user.role === 'supervisor') {
+    showToast('主管无法新建报告', 'error');
+    switchTab('list');
+    return;
+  }
+  APP.currentReport = createEmptyReport();
+  renderReportForm();
+}
+
+function editReport(id) {
+  const r = APP.reports.find(r => r.id === id);
+  if (!r) return;
+  APP.currentReport = JSON.parse(JSON.stringify(r));
+  renderReportForm();
+}
+
+// ===== RENDER REPORT FORM =====
+function renderReportForm() {
+  const r = APP.currentReport;
+  const isReadOnly = APP.user.role === 'supervisor' || r.status === 'approved';
+  const ro = isReadOnly ? 'readonly' : '';
+  const dis = isReadOnly ? 'disabled' : '';
+
+  document.getElementById('headerTitle').textContent = r.status === 'draft' ? '编辑报告' : '查看报告';
+
+  let html = `
+  <!-- STEP TABS -->
+  <div class="tabs">
+    <button class="active" onclick="showFormStep(0,this)">基本信息</button>
+    <button onclick="showFormStep(1,this)">尺寸检测</button>
+    <button onclick="showFormStep(2,this)">检验项目</button>
+    <button onclick="showFormStep(3,this)">照片</button>
+  </div>
+
+  <!-- STEP 0: Basic Info -->
+  <div class="form-step" id="step0">
+    <div class="card">
+      <div class="card-header">📋 基本信息 Basic Info</div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="field"><label>日期 Date</label><input type="date" value="${r.date}" onchange="updateField('date',this.value)" ${ro}></div>
+          <div class="field"><label>PO订单号</label><input type="text" value="${r.poOrderNo}" onchange="updateField('poOrderNo',this.value)" placeholder="如: 816529" ${ro}></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>彩膜型号 Color Film</label><input type="text" value="${r.colorFilmModel}" onchange="updateField('colorFilmModel',this.value)" placeholder="如: LQ15179-1" ${ro}></div>
+          <div class="field"><label>产品类别 Product Type</label>
+            <select onchange="updateField('productType',this.value)" ${dis}>
+              <option value="SPC" ${r.productType==='SPC'?'selected':''}>SPC</option>
+              <option value="WPC" ${r.productType==='WPC'?'selected':''}>WPC</option>
+              <option value="LVT" ${r.productType==='LVT'?'selected':''}>LVT</option>
+              <option value="Other" ${r.productType==='Other'?'selected':''}>其他</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>尺寸 Size</label><input type="text" value="${r.size}" onchange="updateField('size',this.value)" placeholder="如: 1219*182*4.0+1.0 IXPE" ${ro}></div>
+          <div class="field"><label>耐磨层厚度 Wear Layer</label><input type="text" value="${r.wearLayerThickness}" onchange="updateField('wearLayerThickness',this.value)" placeholder="如: 0.5" ${ro}></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>扣型 Lock Type</label>
+            <select onchange="updateField('lockType',this.value)" ${dis}>
+              <option value="I4F" ${r.lockType==='I4F'?'selected':''}>I4F</option>
+              <option value="Unilin" ${r.lockType==='Unilin'?'selected':''}>Unilin</option>
+              <option value="Other" ${r.lockType==='Other'?'selected':''}>其他</option>
+            </select>
+          </div>
+          <div class="field"><label>压纹 Embossed</label><input type="text" value="${r.embossedTexture}" onchange="updateField('embossedTexture',this.value)" placeholder="如: ST01-B" ${ro}></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>型号 Model</label><input type="text" value="${r.model}" onchange="updateField('model',this.value)" placeholder="如: P20_400" ${ro}></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">👁 外观检测 Appearance</div>
+      <div class="card-body">
+        <div class="form-row">
+          <div class="field"><label>测量数量(片)</label><input type="number" value="${r.appearance.testCount}" onchange="updateNested('appearance','testCount',this.value)" ${ro}></div>
+          <div class="field"><label>不合格(片)</label><input type="number" value="${r.appearance.defectCount}" onchange="updateNested('appearance','defectCount',this.value)" ${ro}></div>
+        </div>
+        <div class="field"><label>检测值说明</label><input type="text" value="${r.appearance.testValue||''}" onchange="updateNested('appearance','testValue',this.value)" placeholder="详见抽检照片" ${ro}></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">📦 包装信息 Packaging</div>
+      <div class="card-body">
+        <div class="pkg-row">
+          <span>(</span><input type="number" value="${r.packaging.pcsPerBox}" onchange="updatePkg('pcsPerBox',this.value)" ${ro}><span>)片/箱 ×(</span>
+          <input type="number" value="${r.packaging.layersPerBox}" onchange="updatePkg('layersPerBox',this.value)" ${ro}><span>)层/箱</span>
+        </div>
+        <div class="pkg-row">
+          <span>(</span><input type="number" value="${r.packaging.boxesPerPallet}" onchange="updatePkg('boxesPerPallet',this.value)" ${ro}><span>)箱 ×(</span>
+          <input type="number" value="${r.packaging.layersPerPallet}" onchange="updatePkg('layersPerPallet',this.value)" ${ro}><span>)层/托</span>
+        </div>
+        <div class="pkg-row">
+          <span>(1)箱 /(</span><input type="number" value="${r.packaging.manualsPerBox}" onchange="updatePkg('manualsPerBox',this.value)" ${ro}><span>)本说明书</span>
+        </div>
+        <div class="form-row" style="margin-top:10px">
+          <div class="field"><label>单包重 Box Weight (kg)</label><input type="number" step="0.01" value="${r.boxWeightKg}" onchange="updateField('boxWeightKg',this.value)" ${ro}></div>
+          <div class="field"><label>单拖重 Pallet Weight (kg)</label><input type="number" step="0.01" value="${r.palletWeightKg}" onchange="updateField('palletWeightKg',this.value)" ${ro}></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 1: Dimensions -->
+  <div class="form-step" id="step1" style="display:none">
+    <div class="card">
+      <div class="card-header">📏 尺寸特征和偏差限制</div>
+      <div class="card-body" style="overflow-x:auto">
+        <table class="measure-table">
+          <tr><th>项目</th><th>标准</th>${Array.from({length:10},(_,i)=>`<th>${i+1}</th>`).join('')}<th>判定</th></tr>
+          ${renderDimRow('length','长度 Length', r.dimensions.lengthStd, r.dimensions.length, isReadOnly)}
+          ${renderDimRow('width','宽度 Width', r.dimensions.widthStd, r.dimensions.width, isReadOnly)}
+          ${renderDimRow('thickness','厚度 Thickness', r.dimensions.thicknessStd, r.dimensions.thickness, isReadOnly)}
+          ${renderDimRow('gloss','光泽度 Gloss', r.dimensions.glossStd, r.dimensions.gloss, isReadOnly)}
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: Inspection Items -->
+  <div class="form-step" id="step2" style="display:none">
+    <div class="card">
+      <div class="card-header">✅ 检验项目 Inspection Items</div>
+      <div class="card-body">
+        ${INSPECT_ITEMS.map(item => `
+          <div class="inspect-item">
+            <div class="item-name">${item.name}<small>${item.en} | ${item.std}</small></div>
+            <div class="inspect-result">
+              <button class="${(r.inspectItems[item.key]||'') === 'PASS' ? 'pass-active' : ''}"
+                onclick="setInspect('${item.key}','PASS',this)" ${dis}>合格</button>
+              <button class="${(r.inspectItems[item.key]||'') === 'FAIL' ? 'fail-active' : ''}"
+                onclick="setInspect('${item.key}','FAIL',this)" ${dis}>不合格</button>
+              <button class="${(r.inspectItems[item.key]||'') === 'N/A' ? 'na-active' : ''}"
+                onclick="setInspect('${item.key}','N/A',this)" ${dis}>N/A</button>
+            </div>
+          </div>
+          <input class="remark-input" placeholder="备注..." value="${r.inspectRemarks?.[item.key]||''}"
+            onchange="setInspectRemark('${item.key}',this.value)" ${ro}>
+        `).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">🏁 检验结果 Final Result</div>
+      <div class="card-body">
+        <div class="final-result">
+          <button class="${r.finalResult==='pass'?'pass-selected':''}" onclick="setFinalResult('pass',this)" ${dis}>
+            ✅ 检验合格<br><small>可以发货</small>
+          </button>
+          <button class="${r.finalResult==='fail'?'fail-selected':''}" onclick="setFinalResult('fail',this)" ${dis}>
+            ❌ 检验不合格<br><small>不能发货</small>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3: Photos -->
+  <div class="form-step" id="step3" style="display:none">
+    <div class="card">
+      <div class="card-header">📸 检验照片 Inspection Photos (${Object.keys(r.photos).length}/${PHOTO_SLOTS.length})</div>
+      <div class="card-body">
+        <div class="photo-grid">
+          ${PHOTO_SLOTS.map((label, i) => `
+            <div class="photo-slot" onclick="${isReadOnly ? '' : `triggerPhoto(${i})`}">
+              ${r.photos[i] ? `
+                <img src="${r.photos[i]}" alt="${label}">
+                ${!isReadOnly ? `<button class="delete-photo" onclick="event.stopPropagation();deletePhoto(${i})">×</button>` : ''}
+              ` : `
+                <div class="icon">📷</div>
+                <div class="label">${i+1}. ${label}</div>
+              `}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTION BUTTONS -->
+  <div style="padding:10px 0 20px;display:flex;gap:10px;flex-wrap:wrap">
+    ${!isReadOnly ? `
+      <button class="btn btn-outline btn-sm" onclick="saveDraft()" style="flex:1">💾 保存草稿</button>
+      <button class="btn btn-primary btn-sm" onclick="submitReport()" style="flex:1">📤 提交审核</button>
+    ` : ''}
+    ${APP.user.role === 'supervisor' && r.status === 'submitted' ? `
+      <button class="btn btn-success btn-sm" onclick="approveReport()" style="flex:1">✅ 审核通过</button>
+      <button class="btn btn-danger btn-sm" onclick="rejectReport()" style="flex:1">❌ 驳回</button>
+    ` : ''}
+    ${r.status === 'approved' ? `
+      <button class="btn btn-primary btn-sm" onclick="generatePDF()" style="flex:1">📄 生成PDF</button>
+    ` : ''}
+    <button class="btn btn-outline btn-sm" onclick="generatePDF()" style="flex:1">👁 预览PDF</button>
+    <button class="btn btn-outline btn-sm" onclick="switchTab('list')" style="flex:1">← 返回</button>
+  </div>`;
+
+  document.getElementById('mainContent').innerHTML = html;
+}
+
+function renderDimRow(key, label, std, values, isReadOnly) {
+  const ro = isReadOnly ? 'readonly' : '';
+  const allFilled = values.some(v => v !== '');
+  const result = allFilled ? 'PASS' : '-';
+  return `<tr>
+    <td style="white-space:nowrap;font-weight:500;text-align:left;padding-left:6px">${label}</td>
+    <td style="font-size:.72rem;color:#666">${std}</td>
+    ${values.map((v, i) => `<td><input type="number" step="0.01" value="${v}" onchange="updateDim('${key}',${i},this.value)" ${ro}></td>`).join('')}
+    <td style="font-weight:600;color:${result==='PASS'?'#27ae60':'#999'}">${result}</td>
+  </tr>`;
+}
+
+function showFormStep(step, btn) {
+  document.querySelectorAll('.form-step').forEach((el, i) => {
+    el.style.display = i === step ? 'block' : 'none';
+  });
+  if (btn) {
+    btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+}
+
+// ===== FORM UPDATE FUNCTIONS =====
+function updateField(key, val) { APP.currentReport[key] = val; }
+function updateNested(obj, key, val) { APP.currentReport[obj][key] = val; }
+function updatePkg(key, val) { APP.currentReport.packaging[key] = val; }
+function updateDim(key, idx, val) { APP.currentReport.dimensions[key][idx] = val; }
+
+function setInspect(key, val, btn) {
+  APP.currentReport.inspectItems[key] = val;
+  const parent = btn.parentElement;
+  parent.querySelectorAll('button').forEach(b => b.className = '');
+  btn.className = val === 'PASS' ? 'pass-active' : val === 'FAIL' ? 'fail-active' : 'na-active';
+}
+
+function setInspectRemark(key, val) {
+  if (!APP.currentReport.inspectRemarks) APP.currentReport.inspectRemarks = {};
+  APP.currentReport.inspectRemarks[key] = val;
+}
+
+function setFinalResult(val, btn) {
+  APP.currentReport.finalResult = val;
+  btn.parentElement.querySelectorAll('button').forEach(b => {
+    b.className = '';
+  });
+  btn.className = val === 'pass' ? 'pass-selected' : 'fail-selected';
+}
+
+// ===== PHOTO HANDLING =====
+function triggerPhoto(slot) {
+  APP.editingPhotoSlot = slot;
+  document.getElementById('photoInput').click();
+}
+
+document.getElementById('photoInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    // Compress image
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const maxDim = 1024;
+      let w = img.width, h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) { h = h * maxDim / w; w = maxDim; }
+        else { w = w * maxDim / h; h = maxDim; }
+      }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      APP.currentReport.photos[APP.editingPhotoSlot] = dataUrl;
+      renderReportForm();
+      // Restore to photos tab
+      showFormStep(3, document.querySelectorAll('.tabs button')[3]);
+      showToast('照片已添加', 'success');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  this.value = '';
+});
+
+function deletePhoto(slot) {
+  delete APP.currentReport.photos[slot];
+  renderReportForm();
+  showFormStep(3, document.querySelectorAll('.tabs button')[3]);
+}
+
+// ===== SAVE / SUBMIT / APPROVE =====
+async function saveDraft() {
+  const r = APP.currentReport;
+  r.status = 'draft';
+  r.updatedAt = new Date().toISOString();
+  await saveReport(r);
+  APP.reports = await getAllReports();
+  showToast('草稿已保存', 'success');
+}
+
+async function submitReport() {
+  const r = APP.currentReport;
+  if (!r.poOrderNo) { showToast('请填写PO订单号', 'error'); return; }
+  r.status = 'submitted';
+  r.updatedAt = new Date().toISOString();
+  r.inspector = APP.user.name;
+  await saveReport(r);
+  APP.reports = await getAllReports();
+  showToast('报告已提交审核', 'success');
+  switchTab('list');
+}
+
+async function approveReport() {
+  const r = APP.currentReport;
+  r.status = 'approved';
+  r.reviewer = APP.user.name;
+  r.updatedAt = new Date().toISOString();
+  await saveReport(r);
+  APP.reports = await getAllReports();
+  showToast('报告已审核通过', 'success');
+  switchTab('list');
+}
+
+async function rejectReport() {
+  const r = APP.currentReport;
+  r.status = 'rejected';
+  r.reviewer = APP.user.name;
+  r.updatedAt = new Date().toISOString();
+  await saveReport(r);
+  APP.reports = await getAllReports();
+  showToast('报告已驳回', 'error');
+  switchTab('list');
+}
+
+// ===== REPORT LIST =====
+async function renderReportList() {
+  APP.reports = await getAllReports();
+  document.getElementById('headerTitle').textContent = APP.user.role === 'supervisor' ? '审核中心' : '我的报告';
+
+  let reports = APP.reports;
+  if (APP.user.role === 'inspector') {
+    reports = reports.filter(r => r.createdBy === APP.user.username);
+  }
+  reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+  const statusLabels = { draft: '草稿', submitted: '待审核', approved: '已通过', rejected: '已驳回' };
+  const statusClass = { draft: 'badge-draft', submitted: 'badge-submitted', approved: 'badge-approved', rejected: 'badge-rejected' };
+
+  let filterHtml = '';
+  if (APP.user.role === 'supervisor') {
+    filterHtml = `
+    <div class="tabs" style="margin-bottom:12px">
+      <button class="active" onclick="filterReports('all',this)">全部</button>
+      <button onclick="filterReports('submitted',this)">待审核</button>
+      <button onclick="filterReports('approved',this)">已通过</button>
+      <button onclick="filterReports('rejected',this)">已驳回</button>
+    </div>`;
+  }
+
+  if (reports.length === 0) {
+    document.getElementById('mainContent').innerHTML = filterHtml + `
+      <div class="empty-state">
+        <div class="icon">📋</div>
+        <p>${APP.user.role === 'supervisor' ? '暂无待审核报告' : '暂无报告，点击下方"新建报告"开始'}</p>
+      </div>`;
+    return;
+  }
+
+  document.getElementById('mainContent').innerHTML = filterHtml + `
+    <div id="reportListContainer">
+    ${reports.map(r => `
+      <div class="report-item" onclick="editReport('${r.id}')">
+        <div style="width:42px;height:42px;background:${r.finalResult==='pass'?'#d4edda':'#f8d7da'};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem">${r.finalResult==='pass'?'✅':'❌'}</div>
+        <div class="report-info">
+          <h3>PO: ${r.poOrderNo || '未填写'} - ${r.colorFilmModel || ''}</h3>
+          <p>${r.date} · ${r.inspector || '未指定'} · ${r.productType}</p>
+        </div>
+        <span class="badge ${statusClass[r.status]}">${statusLabels[r.status]}</span>
+      </div>
+    `).join('')}
+    </div>`;
+}
+
+function filterReports(status, btn) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const container = document.getElementById('reportListContainer');
+  const items = container.querySelectorAll('.report-item');
+  items.forEach(item => {
+    if (status === 'all') { item.style.display = 'flex'; return; }
+    const badge = item.querySelector('.badge');
+    const map = { submitted: '待审核', approved: '已通过', rejected: '已驳回', draft: '草稿' };
+    item.style.display = badge.textContent === map[status] ? 'flex' : 'none';
+  });
+}
+
+// ===== PROFILE =====
+function renderProfile() {
+  document.getElementById('headerTitle').textContent = '个人中心';
+  const r = APP.reports.filter(r => APP.user.role === 'inspector' ? r.createdBy === APP.user.username : true);
+  const stats = {
+    total: r.length,
+    draft: r.filter(x => x.status === 'draft').length,
+    submitted: r.filter(x => x.status === 'submitted').length,
+    approved: r.filter(x => x.status === 'approved').length,
+    rejected: r.filter(x => x.status === 'rejected').length,
+  };
+  document.getElementById('mainContent').innerHTML = `
+    <div class="card">
+      <div class="card-header">👤 个人信息</div>
+      <div class="card-body">
+        <p style="margin-bottom:8px"><strong>用户名：</strong>${APP.user.username}</p>
+        <p style="margin-bottom:8px"><strong>姓名：</strong>${APP.user.name}</p>
+        <p><strong>角色：</strong>${APP.user.role === 'supervisor' ? '主管 Supervisor' : '质检员 Inspector'}</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">📊 统计</div>
+      <div class="card-body">
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;text-align:center">
+          <div style="padding:12px;background:#e8f0fe;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#1a5276">${stats.total}</div><div style="font-size:.78rem;color:#666">总报告</div></div>
+          <div style="padding:12px;background:#cce5ff;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#004085">${stats.submitted}</div><div style="font-size:.78rem;color:#666">待审核</div></div>
+          <div style="padding:12px;background:#d4edda;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#155724">${stats.approved}</div><div style="font-size:.78rem;color:#666">已通过</div></div>
+          <div style="padding:12px;background:#f8d7da;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#721c24">${stats.rejected}</div><div style="font-size:.78rem;color:#666">已驳回</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">⚙️ 设置</div>
+      <div class="card-body">
+        <button class="btn btn-outline" onclick="clearAllData()" style="margin-bottom:8px">🗑 清除所有数据</button>
+        <p style="font-size:.75rem;color:#999;margin-top:8px">版本 v1.0.0 · 森雅国际有限公司</p>
+      </div>
+    </div>`;
+}
+
+async function clearAllData() {
+  if (!confirm('确定要清除所有报告数据吗？此操作不可恢复！')) return;
+  const tx = APP.db.transaction('reports', 'readwrite');
+  tx.objectStore('reports').clear();
+  tx.oncomplete = async () => {
+    APP.reports = [];
+    showToast('数据已清除', 'info');
+    renderProfile();
+  };
+}
+
+// ===== 4-LANGUAGE LABEL DATA =====
+const L = {
+  company: '森雅国际有限公司 บริษัท เซเนีย อินเตอร์เนชั่นแนล จำกัด Senia International Co., Ltd.',
+  title: '成品出厂终检报告Finished Product Release Inspection Report รายงานตรวจสอบปล่อยผลิตภัณฑ์สำเร็จรูป ကုန်ချော ထုတ်ပေးခြင်းဆိုင်ရာ စစ်ဆေးမှုအစီရင်ခံစာ',
+  date: '日期：Date：\nวันที่：ရက်စွဲ：',
+  po: 'PO Order No.',
+  colorFilm: '彩膜型号 Color Film Model\nรุ่นฟิล์มสี ရောင်စုံဖလင်မော်ဒယ်',
+  productType: '产品类别 Product Type\nประเภทผลิตภัณฑ์ ကုန်ပစ္စည်းအမျိုးအစား',
+  size: '尺寸 Size\nขนาด အရွယ်အစား',
+  wearLayer: '耐磨层厚度 Wear Layer Thickness\nความหนาของชั้นกันสึก အကြမ်းခံလွှာအထူ',
+  lockType: '扣型 Lock Type\nรูปแบบตัวล็อค ချိတ်အမျိုးအစား',
+  embossed: '压纹 Embossed Texture\nลายปั๊มนูน အဆင်ဖော်',
+  model: '型号 Model รุ่น မော်ဒယ်',
+  appearance: '外观 Appearance ลักษณะภายนอก အသွင်အပြင်',
+  testItem: '检测项目 Test Item\nรายการทดสอบ စစ်ဆေးသည့်အချက်',
+  testCount: '测数量（片）Number of tests (sheets)\nจำนวนทดสอบ (แผ่น) စမ်းသပ်သည့်အရေအတွက်(အပြား)',
+  defectCount: '不合格（片）Doesn\'t pass the standard (sheet)\nไม่ผ่านมาตรฐาน (แผ่น) အရည်အသွေးမမီသော (အပြား)',
+  testValue: '检测值 Test value\nค่าทดสอบ စမ်းသပ်တန်ဖိုး',
+  result: '判定 Result\nผล ရလဒ်',
+  defects: '缺损、龟裂、皱纹、孔洞、分层、剥离、杂质、气泡、擦伤、胶印、变色、异常凹痕、污迹、白边等\nFlaws, cracks, wrinkles, holes, delamination, peeling, impurities, air bubbles, scratches, glue marks, discoloration, abnormal dents, stains, white edges, etc.\nตำหนิ,รอยแตก,รอยยับ,รู,การหลุดลอก,สิ่งเจือปน,ฟองอากาศ,รอยขีดข่วน,คราบกาว,การเปลี่ยนสี,รอยบุบผิดปกติ,คราบสกปรก,ขอบขาว ฯลฯ\nချို့ယွင်းချက်များ၊ အက်ကြောင်းများ၊ အပေါက်များ၊ ပွန်းပဲ့ရာများ၊ အရောင်ပြောင်းခြင်း စသည်တို့',
+  dimTitle: '尺寸特征和偏差限制Dimensional Characteristics and Deviation Limits\nคุณสมบัติขนาดและข้อจำกัดความเบี่ยงเบน အတိုင်းအတာဆိုင်ရာ လက္ခဏာရပ်များနှင့်သွဖည်မှုကန့်သတ်ချက်များ',
+  item: '项目 Item\nรายการ အချက်',
+  standard: '标准 Standard\nมาตรฐาน စံနှုန်း',
+  measuredValue: '检测数据 Measured Value\nค่าที่วัดได้ တိုင်းတာရှိသည့်တန်ဖိုး',
+  length: '长度 Length\nความยาว အလျား',
+  width: '宽度 Width\nความกว้าง အနံ',
+  thickness: '厚度 Thickness\nความหนา အထူ',
+  gloss: '光泽度 Gloss\nความเงา တောက်ပမှု',
+  heightDiff: '高低差 Height Difference\nค่าสูงต่ำ အမြင့်အနိမ့်ခြားနားချက်',
+  jointGap: '拼接离缝 Joint Gap\nรอยต่อมีช่องว่าง ဆက်ကြောင်းကြား ကွာဟချက်',
+  colorMatch: '颜色对比 Color Matching\nเทียบสี အရောင်တိုက်စစ်ခြင်း',
+  signedSample: '签样 Signed Sample\nตัวอย่างที่ลงนาม လက်မှတ်ရေးထိုးထားသော နမူနာ',
+  palletLabel: '托盘标 Pallet Label\nสติกเกอร์พาเลท ခံပြားအညွှန်း',
+  inkjet: '喷码 Inkjet Printing\nการพิมพ์อิงค์เจ็ท ကုဒ်ရိုက်နှိပ်ခြင်း',
+  palletItem: '托盘 Pallet\nพาเลท ခံပြား',
+  boxWeight: '单包重 Box Weight\nน้ำหนักกล่อง တစ်ပုံးချင်းစီ၏ အလေးချိန်',
+  palletWeight: '单拖重 Weight Per Pallet\nน้ำหนักต่อพาเลท ခံပြားတစ်ခုစီ၏ အလေးချိန်',
+  sampling: '抽样 Sampling\nการสุ่มตัวอย่าง နမူနာယူခြင်း',
+  frontSideMark: '正、侧唛 Front/Side Mark\nเครื่องหมายด้านหน้า/ด้านข้าง ရှေ့/ဘေး အမှတ်အသား',
+  shippingMark: '端唛 Shipping Mark\nเครื่องหมายการจัดส่ง သင်္ဘောတင် အမှတ်အသား',
+  carton: '纸箱 Carton\nกล่องกระดาษ စက္ကူပုံး',
+  packing: '包装 Packing\nการบรรจุ ထုပ်ပိုးခြင်း',
+  palletizing: '打托 Palletizing\nการวางบนพาเลท ခံပြားပေါ်တင်ခြင်း',
+  manual: '说明书 Manual\nคู่มือ လမ်းညွှန်စာအုပ်',
+  customerReq: '客户要求 Customer Requirement\nข้อกำหนดของลูกค้า ဖောက်သည်လိုအပ်ချက်',
+  orderReq: '订单要求 By Order Requirement\nตามข้อกำหนดของออเดอร์ အမှာစာလိုအပ်ချက်အရ',
+  inspector: '终检 Inspector\nผู้ตรวจสอบ နောက်ဆုံးစစ်ဆေးသူ',
+  reviewer: '审核 Reviewer\nผู้ทบทวน ပြန်လည်စစ်ဆေးသူ',
+  passResult: '检验结果 ■检验合格，整体经终检抽检，没有发现明显缺陷，可以发货。\nFinal inspection result: The overall lot has passed final random inspection. No significant defects were found, and the goods can be shipped.\nผลการตรวจสอบขั้นสุดท้าย: สินค้าทั้งหมดผ่านการตรวจสอบแบบสุ่มขั้นสุดท้ายแล้ว ไม่พบข้อบกพร่องที่สำคัญ สามารถจัดส่งสินค้าได้\nနောက်ဆုံးစစ်ဆေးမှုရလဒ်- ကုန်ပစ္စည်းအားလုံး နောက်ဆုံးကျပန်းစစ်ဆေးမှုကိုအောင်မြင်ပြီးဖြစ်သည်။ ကုန်ပစ္စည်းများကိုတင်ပို့နိုင်ပါသည်။',
+  failResult: '□检验不合格，不能发货\nIf the inspection fails, the product cannot be shipped.\nหากการตรวจสอบล้มเหลวผลิตภัณฑ์จะไม่สามารถจัดส่งได้\nစစ်ဆေးမှုမအောင်မြင်ဖြစ်သောကြောင့်ပို့ဆောင်ပေးခြင်းမပြုလုပ်နိုင်ပါ',
+};
+
+// Photo slot labels in 4 languages
+const PHOTO_LABELS_4L = [
+  '1. 签字样板照片 Signed Sample Photo\nรูปถ่ายตัวอย่างที่ลงนาม လက်မှတ်ရေးထိုးထားသော နမူနာဓာတ်ပုံ',
+  '2. 纸盒标签 Box Label\nฉลากกล่องกระดาษแข็ง ပုံးငယ်အညွှန်း',
+  '3. 纸箱条形码 Carton Barcode\nบาร์โค้ดกล่องกระดาษ စက္ကူပုံး ဘားကုဒ်',
+  '4. 托盘标 Pallet Label\nฉลากพาเลท ခံပြားအညွှန်း',
+  '5. 托盘标条形码 Pallet Label Barcode\nบาร์โค้ดฉลากพาเลท ခံပြားအညွှန်း ဘားကုဒ်',
+  '6. 背面喷码信息 Backside Inkjet Information\nข้อมูลการพิมพ์อิงค์เจ็ทด้านหลัง ကျောဘက်ကုဒ်ရိုက်နှိပ်ခြင်း အချက်အလက်',
+  '7. 整托照片',
+  '8. 每包重量 Weight Per Box\nน้ำหนักต่อกล่อง တစ်ပုံးချင်းစီ၏ အလေးချိန်',
+  '9. 托盘含水率 Pallet Moisture Content\nปริมาณความชื้นของพาเลท ခံပြား အစိုဓာတ်ပါဝင်မှု',
+  '10. 长度 Length ความยาว အလျား - mm',
+  '11. 长度 Length ความยาว အလျား - mm',
+  '12. 长度 Length ความยาว အလျား - mm',
+  '13. 宽度 Width ความกว้าง အနံ - mm',
+  '14. 宽度 Width ความกว้าง အနံ - mm',
+  '15. 宽度 Width ความกว้าง အနံ - mm',
+  '16. 厚度 Thickness ความหนา အထူ - mm',
+  '17. 厚度 Thickness ความหนา အထူ - mm',
+  '18. 厚度 Thickness ความหนา အထူ - mm',
+  '19. 拼装照片 Assembly Photo\nรูปภาพการประกอบ တပ်ဆင်ထားသည့်ဓာတ်ပုံ',
+  '20. 拼装照片 Assembly Photo\nรูปภาพการประกอบ တပ်ဆင်ထားသည့်ဓာတ်ပုံ',
+  '21. 拼装照片 Assembly Photo\nรูปภาพการประกอบ တပ်ဆင်ထားသည့်ဓာတ်ပုံ',
+  '22. 拼装照片 Assembly Photo\nรูปภาพการประกอบ တပ်ဆင်ထားသည့်ဓာတ်ပုံ',
+  '23. 光泽度 Gloss Value\nค่าความเงา တောက်ပမှုတန်ဖိုး',
+  '24. 光泽度 Gloss Value\nค่าความเงา တောက်ပမှုတန်ဖိုး',
+  '25. 倒角检查-长边',
+  '26. 倒角检查-短边',
+  '27. 纸盒 Cardboard Box\nกล่องกระดาษแข็ง ပုံးငယ်',
+  '28. 背膜花纹',
+  '29.',
+];
+
+// ===== PDF GENERATION (html2canvas) =====
+async function generatePDF() {
+  const r = APP.currentReport;
+  if (!r) { showToast('没有报告数据', 'error'); return; }
+  showToast('正在生成PDF，请稍候...', 'info');
+
+  // Build hidden container
+  let container = document.getElementById('pdfRenderArea');
+  if (container) container.remove();
+  container = document.createElement('div');
+  container.id = 'pdfRenderArea';
+  container.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;';
+  document.body.appendChild(container);
+
+  const S = `
+  <style>
+    .pg{width:794px;min-height:1123px;background:#fff;padding:12px 18px;font-family:'Noto Sans','Noto Sans Thai','Noto Sans Myanmar',sans-serif;font-size:7px;color:#222;line-height:1.35;box-sizing:border-box;position:relative}
+    .pg *{box-sizing:border-box}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    td,th{border:1px solid #888;padding:2px 3px;vertical-align:middle;word-break:break-all;font-size:6.5px}
+    th{background:#d6e4f0;font-weight:600;font-size:6.5px}
+    .hdr{background:#1a5276;color:#fff;text-align:center;padding:4px 6px;font-size:8px;font-weight:700;border:none}
+    .hdr2{font-size:7px;font-weight:600}
+    .section-hdr td{background:#d6e4f0;font-weight:600;font-size:6.5px}
+    .val{font-size:8px;font-weight:600;text-align:center}
+    .pass{color:#1a8c3e;font-weight:700;font-size:8px}
+    .fail{color:#c0392b;font-weight:700;font-size:8px}
+    .lbl{color:#333;font-size:6px;line-height:1.25}
+    .lbl4{font-size:5.5px;color:#555;line-height:1.2}
+    .result-box{padding:3px 5px;font-size:6px;line-height:1.3}
+    .result-pass{background:#d4edda;border:1px solid #28a745}
+    .result-fail{background:#f8d7da;border:1px solid #dc3545}
+    .photo-cell{width:33.33%;height:170px;vertical-align:top;padding:1px;position:relative}
+    .photo-cell .plbl{font-size:5.5px;background:#f0f0f0;padding:2px 3px;line-height:1.2;min-height:22px;border-bottom:1px solid #ccc}
+    .photo-cell img{width:100%;height:140px;object-fit:cover;display:block}
+    .photo-cell .empty{width:100%;height:140px;background:#fafafa;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:10px}
+    .footer-row td{border:none;font-size:6px;padding:4px 3px}
+    .pkg-info{font-size:6.5px}
+  </style>`;
+
+  // ===== Build Page 1 HTML =====
+  function buildPage1() {
+    const inspItems = [
+      { k:'heightDiff', l:L.heightDiff, std:'≤0.10mm' },
+      { k:'jointGap', l:L.jointGap, std:'≤0.10mm' },
+      { k:'colorMatch', l:L.colorMatch, std:L.signedSample },
+      { k:'palletLabel', l:L.palletLabel, std:L.customerReq },
+      { k:'inkjet', l:L.inkjet, std:L.customerReq },
+      { k:'pallet', l:L.palletItem, std:'15%' },
+      { k:'boxWeight', l:L.boxWeight, std:L.orderReq },
+      { k:'palletWeight', l:L.palletWeight, std:L.orderReq },
+      { k:'sampling', l:L.sampling, std:L.customerReq },
+      { k:'frontSideMark', l:L.frontSideMark, std:L.customerReq },
+      { k:'shippingMark', l:L.shippingMark, std:L.customerReq },
+      { k:'carton', l:L.carton, std:L.customerReq },
+      { k:'packing', l:L.packing, std:L.customerReq },
+      { k:'palletizing', l:L.palletizing, std:L.customerReq },
+      { k:'manual', l:L.manual, std:L.customerReq },
+    ];
+
+    const dimRows = [
+      { l:L.length, std:r.dimensions.lengthStd, vals:r.dimensions.length },
+      { l:L.width, std:r.dimensions.widthStd, vals:r.dimensions.width },
+      { l:L.thickness, std:r.dimensions.thicknessStd, vals:r.dimensions.thickness },
+      { l:L.gloss, std:r.dimensions.glossStd, vals:r.dimensions.gloss },
+    ];
+
+    let inspRows = inspItems.map(it => {
+      const res = r.inspectItems[it.k] || '/';
+      const rem = r.inspectRemarks?.[it.k] || '';
+      const cls = res === 'PASS' ? 'pass' : res === 'FAIL' ? 'fail' : '';
+      return `<tr>
+        <td class="lbl" style="width:18%;white-space:pre-line">${it.l}</td>
+        <td class="lbl" style="width:14%;white-space:pre-line">${it.std}</td>
+        <td class="lbl" style="width:55%;font-size:5.5px;white-space:pre-line">${rem}</td>
+        <td class="${cls}" style="width:13%;text-align:center">${res}</td>
+      </tr>`;
+    }).join('');
+
+    let dimDataRows = dimRows.map(d => {
+      const filled = d.vals.some(v => v !== '');
+      const res = filled ? 'PASS' : '';
+      return `<tr>
+        <td class="lbl" style="white-space:pre-line">${d.l}</td>
+        <td style="text-align:center;font-size:6px">${d.std}</td>
+        ${d.vals.map(v => `<td class="val" style="font-size:7px">${v||''}</td>`).join('')}
+        <td class="pass" style="text-align:center">${res}</td>
+      </tr>`;
+    }).join('');
+
+    const passChecked = r.finalResult === 'pass' ? '■' : '□';
+    const failChecked = r.finalResult !== 'pass' ? '■' : '□';
+
+    return `<div class="pg">
+      <!-- HEADER -->
+      <table style="margin-bottom:2px">
+        <tr><td colspan="6" class="hdr" style="font-size:8px;padding:3px">${L.company}</td></tr>
+        <tr><td colspan="6" class="hdr hdr2" style="font-size:7px;padding:2px">${L.title}</td></tr>
+      </table>
+
+      <!-- BASIC INFO -->
+      <table style="margin-bottom:2px">
+        <tr>
+          <td class="lbl" style="width:12%;white-space:pre-line">${L.date}</td>
+          <td class="val" style="width:14%">${r.date}</td>
+          <td class="lbl" style="width:8%">${L.po}</td>
+          <td class="val" style="width:14%">${r.poOrderNo}</td>
+          <td class="lbl" style="width:22%;white-space:pre-line">${L.colorFilm}</td>
+          <td class="val" style="width:14%">${r.colorFilmModel}</td>
+        </tr>
+        <tr>
+          <td class="lbl" style="white-space:pre-line">${L.productType}</td>
+          <td class="val">${r.productType}</td>
+          <td class="lbl" style="white-space:pre-line">${L.size}</td>
+          <td class="val" colspan="1">${r.size}</td>
+          <td class="lbl" style="white-space:pre-line">${L.wearLayer}</td>
+          <td class="val">${r.wearLayerThickness}</td>
+        </tr>
+        <tr>
+          <td class="lbl" style="white-space:pre-line">${L.lockType}</td>
+          <td class="val">${r.lockType}</td>
+          <td class="lbl" style="white-space:pre-line">${L.embossed}</td>
+          <td class="val">${r.embossedTexture}</td>
+          <td class="lbl" style="white-space:pre-line">${L.model}</td>
+          <td class="val">${r.model}</td>
+        </tr>
+      </table>
+
+      <!-- APPEARANCE -->
+      <table style="margin-bottom:2px">
+        <tr class="section-hdr"><td colspan="5" style="white-space:pre-line">${L.appearance}</td></tr>
+        <tr>
+          <th style="width:40%;white-space:pre-line;text-align:left;padding-left:4px">${L.testItem}</th>
+          <th style="width:14%;white-space:pre-line">${L.testCount}</th>
+          <th style="width:14%;white-space:pre-line">${L.defectCount}</th>
+          <th style="width:18%;white-space:pre-line">${L.testValue}</th>
+          <th style="width:14%;white-space:pre-line">${L.result}</th>
+        </tr>
+        <tr>
+          <td class="lbl4" style="white-space:pre-line;font-size:5px;line-height:1.15">${L.defects}</td>
+          <td class="val">${r.appearance.testCount}</td>
+          <td class="val">${r.appearance.defectCount}</td>
+          <td class="lbl" style="font-size:5.5px;white-space:pre-line">${r.appearance.testValue || '详见抽检照片\nRefer to sampling inspection photos for details.\nดูรายละเอียดในภาพถ่ายการสุ่มตรวจ\nအသေးစိတ်ကိုနမူနာယူစစ်ဆေးသည့်ဓာတ်ပုံများတွင်ကြည့်ပါ'}</td>
+          <td class="pass" style="text-align:center">${r.appearance.result || 'PASS'}</td>
+        </tr>
+      </table>
+
+      <!-- DIMENSIONS -->
+      <table style="margin-bottom:2px">
+        <tr class="section-hdr"><td colspan="13" style="white-space:pre-line;font-size:6px">${L.dimTitle}</td></tr>
+        <tr>
+          <th style="width:12%;white-space:pre-line">${L.item}</th>
+          <th style="width:8%;white-space:pre-line">${L.standard}</th>
+          <th colspan="10" style="white-space:pre-line">${L.measuredValue}</th>
+          <th style="width:8%;white-space:pre-line">${L.result}</th>
+        </tr>
+        ${dimDataRows}
+      </table>
+
+      <!-- INSPECTION ITEMS TABLE -->
+      <table style="margin-bottom:2px">
+        ${inspRows}
+      </table>
+
+      <!-- PACKAGING -->
+      <table style="margin-bottom:2px">
+        <tr>
+          <td colspan="4" class="pkg-info">
+            （${r.packaging.pcsPerBox}）片pcs แผ่น ချပ် × （${r.packaging.layersPerBox}）层/箱 layer/box ชั้น/กล่อง လွှာ/တစ်ပုံး &nbsp;
+            （${r.packaging.boxesPerPallet}）箱boxes กล่อง ပုံး × （${r.packaging.layersPerPallet}）层/托 layers/pallet ชั้น/พาเลท လွှာ/တစ်ခံပြား &nbsp;
+            （1）箱box กล่อง တစ်ပုံး /（${r.packaging.manualsPerBox}）本manual เล่ม စာအုပ်
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" class="pkg-info">单包重Weight per box is น้ำหนักต่อกล่อง တစ်ပုံးချင်းစီ၏ အလေးချိန်မှာ（${r.boxWeightKg}）kg กก ကီလိုဂရမ်ဖြစ်ပါသည်。</td>
+          <td colspan="2" class="pkg-info">单拖重 Weight per pallet is น้ำหนักต่อพาเลท ခံပြားတစ်ခုစီ၏ အလေးချိန်မှာ（${r.palletWeightKg}）KG/กก ကီလိုဂရမ်ဖြစ်ပါသည်。</td>
+        </tr>
+      </table>
+
+      <!-- FINAL RESULT -->
+      <div class="result-box ${r.finalResult==='pass'?'result-pass':'result-fail'}" style="white-space:pre-line;margin-bottom:4px">
+        ${r.finalResult === 'pass' ? L.passResult : L.failResult}
+      </div>
+
+      <!-- SIGNATURES -->
+      <table>
+        <tr class="footer-row">
+          <td style="width:40%;white-space:pre-line">${L.inspector}：${r.inspector}</td>
+          <td style="width:40%;white-space:pre-line">${L.reviewer}：${r.reviewer}</td>
+          <td style="width:20%"></td>
+        </tr>
+      </table>
+      <div style="position:absolute;bottom:6px;right:18px;font-size:5px;color:#999">DCN:FM-00-QC-023-001</div>
+    </div>`;
+  }
+
+  // ===== Build Photo Page HTML =====
+  function buildPhotoPage(startIdx, endIdx, pageNum) {
+    const slots = PHOTO_LABELS_4L.slice(startIdx, endIdx);
+    let rows = '';
+    for (let i = 0; i < slots.length; i += 3) {
+      rows += '<tr>';
+      for (let j = 0; j < 3; j++) {
+        const idx = startIdx + i + j;
+        const label = slots[i + j] || '';
+        const photoData = r.photos[idx];
+        rows += `<td class="photo-cell">
+          <div class="plbl">${label.replace(/\n/g, '<br>')}</div>
+          ${photoData ? `<img src="${photoData}">` : '<div class="empty">No Photo</div>'}
+        </td>`;
+      }
+      rows += '</tr>';
+    }
+
+    const isLastPage = endIdx >= PHOTO_LABELS_4L.length;
+    return `<div class="pg">
+      <table style="margin-bottom:4px">
+        <tr>
+          <td style="width:30%;border:1px solid #888;padding:3px;font-size:6px;white-space:pre-line">PO 订单号 PO Order No.\nหมายเลขคำสั่งซื้อ PO\nPO အမှာစာနံပါတ်</td>
+          <td style="width:20%;border:1px solid #888;font-size:9px;font-weight:700;text-align:center">${r.poOrderNo}</td>
+          <td style="width:30%;border:1px solid #888;padding:3px;font-size:6px;white-space:pre-line">产品型号 Product Model\nรุ่นผลิตภัณฑ์ ကုန်ပစ္စည်းမော်ဒယ်</td>
+          <td style="width:20%;border:1px solid #888;font-size:9px;font-weight:700;text-align:center">${r.colorFilmModel}</td>
+        </tr>
+      </table>
+      <table>${rows}</table>
+      ${isLastPage ? `
+        <table style="margin-top:6px">
+          <tr class="footer-row">
+            <td style="width:35%;white-space:pre-line">${L.inspector}：${r.inspector}</td>
+            <td style="width:35%;white-space:pre-line">${L.reviewer}：${r.reviewer}</td>
+            <td style="width:30%">日期 Date วันที่ ရက်စွဲ：${r.date}</td>
+          </tr>
+        </table>` : ''}
+      <div style="position:absolute;bottom:6px;right:18px;font-size:5px;color:#999">FM-QC-86_02 : Rev.00 : 06/09/22</div>
+    </div>`;
+  }
+
+  // Render pages
+  container.innerHTML = S + buildPage1() + buildPhotoPage(0, 15, 2) + buildPhotoPage(15, 29, 3);
+
+  // Wait for images to load
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  const pages = container.querySelectorAll('.pg');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  for (let i = 0; i < pages.length; i++) {
+    if (i > 0) doc.addPage();
+    try {
+      const canvas = await html2canvas(pages[i], {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: 794,
+        windowWidth: 794,
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      doc.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+    } catch(e) {
+      console.error('Page render error:', e);
+    }
+  }
+
+  container.remove();
+  const filename = `${r.poOrderNo || 'Report'}-${r.colorFilmModel || ''}-${r.date}.pdf`;
+  doc.save(filename);
+  showToast('PDF已生成！', 'success');
+}
+
+// ===== SERVICE WORKER =====
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
