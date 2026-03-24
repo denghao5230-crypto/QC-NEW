@@ -148,8 +148,8 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
   <div class="login-subtitle">Senia International Inspection System</div>
   <div class="login-card">
     <h2>用户登录</h2>
-    <div class="form-group"><label>用户名</label><input type="text" id="loginUser" placeholder="请输入用户名"></div>
-    <div class="form-group"><label>密码</label><input type="password" id="loginPass" placeholder="请输入密码"></div>
+    <div class="form-group"><label>用户名</label><input type="text" id="loginUser" placeholder="请输入用户名" onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()"></div>
+    <div class="form-group"><label>密码</label><input type="password" id="loginPass" placeholder="请输入密码" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <div class="form-group"><label>角色</label>
       <select id="loginRole">
         <option value="inspector">质检员 Inspector စစ်ဆေးသူ</option>
@@ -821,19 +821,7 @@ async function generatePDF(){
     .res{padding:3px;font-size:5.5px;line-height:1.25;border:1px solid #888}
     .resbg{background:#d4edda}
     .ftd{border:none;font-size:5.5px;padding:3px}
-    .pdf-logo-hdr{display:flex;align-items:center;justify-content:center;gap:8px;padding:5px 0 4px;border-bottom:2px solid #1a5276}
-    .senia-logo{display:inline-flex;align-items:baseline;font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:18px;color:#3d3d3d;letter-spacing:1.5px;line-height:1;position:relative}
-    .senia-logo .leaf{position:relative;display:inline-block}
-    .senia-logo .leaf::before{content:"I";display:inline}
-    .senia-logo .leaf::after{content:"";position:absolute;top:-6px;left:3px;width:8px;height:10px;background:#2eac6b;border-radius:0 8px 0 8px;transform:rotate(-30deg)}
-    .senia-intl{font-family:Arial,Helvetica,sans-serif;font-size:6px;color:#555;letter-spacing:4px;margin-top:0px;text-align:center}
-    .pdf-hdr-right{text-align:center;margin-left:6px}
-    .pdf-hdr-right .t1{font-size:7.5px;font-weight:700;color:#1a5276}
-    .pdf-hdr-right .t2{font-size:5px;color:#555;margin-top:1px}
-    .pdf-sub-hdr{background:#1a5276;color:#fff;text-align:center;padding:3px 0;font-size:6px;font-weight:600;margin-top:2px}
     .photo-pg-hdr{display:flex;align-items:center;gap:6px;padding:2px 0 3px;border-bottom:1.5px solid #1a5276;margin-bottom:3px}
-    .photo-pg-hdr .mini-logo{font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:10px;color:#3d3d3d;letter-spacing:1px;white-space:nowrap}
-    .photo-pg-hdr .mini-logo .lf{color:#2eac6b}
   </style>`;
 
   // Dimension results
@@ -858,17 +846,8 @@ async function generatePDF(){
   }).join('');
 
   const p1=`<div class="pg">
-    <div class="pdf-logo-hdr">
-      <div style="text-align:center">
-        <div class="senia-logo">SEN<span class="leaf"></span>A</div>
-        <div class="senia-intl">INTERNATIONAL</div>
-      </div>
-      <div class="pdf-hdr-right">
-        <div class="t1">森雅国际有限公司 Senia International Co., Ltd.</div>
-        <div class="t2">บริษัท เซเนีย อินเตอร์เนชั่นแนล จำกัด</div>
-      </div>
-    </div>
-    <div class="pdf-sub-hdr">成品出厂终检报告 Finished Product Release Inspection Report รายงานตรวจสอบปล่อยผลิตภัณฑ์สำเร็จรูป ကုန်ချော ထုတ်ပေးခြင်းဆိုင်ရာ စစ်ဆေးမှုအစီရင်ခံစာ</div>
+    <table><tr><td colspan="9" class="hdr">森雅国际有限公司 บริษัท เซเนีย อินเตอร์เนชั่นแนล จำกัด Senia International Co., Ltd.</td></tr>
+    <tr><td colspan="9" class="hdr hdr2">成品出厂终检报告 Finished Product Release Inspection Report รายงานตรวจสอบปล่อยผลิตภัณฑ์สำเร็จรูป ကုန်ချော ထုတ်ပေးခြင်းဆိုင်ရာ စစ်ဆေးမှုအစီရင်ခံစာ</td></tr></table>
     <table><tr>
       <td class="lbl" style="width:11%">日期 Date\nวันที่ ရက်စွဲ</td><td class="val" style="width:13%">${r.date}</td>
       <td class="lbl" style="width:7%">PO No.</td><td class="val" style="width:13%">${r.poOrderNo}</td>
@@ -913,14 +892,8 @@ async function generatePDF(){
     }
     const isLast=end>=PHOTO_SLOTS.length;
     return `<div class="pg">
-      <div class="photo-pg-hdr">
-        <div class="mini-logo">SEN<span class="lf">i</span>A</div>
-        <div style="flex:1;display:flex;justify-content:space-between;font-size:6px">
-          <span>PO订单号 PO No. <b>${r.poOrderNo}</b></span>
-          <span>产品型号 Model <b>${r.colorFilmModel}</b></span>
-          <span>日期 Date <b>${r.date}</b></span>
-        </div>
-      </div>
+      <table style="margin-bottom:3px"><tr><td style="font-size:6px;width:50%">PO订单号 PO Order No. အမှာစာနံပါတ် <b>${r.poOrderNo}</b></td>
+      <td style="font-size:6px;width:50%">产品型号 Product Model ကုန်ပစ္စည်းမော်ဒယ် <b>${r.colorFilmModel}</b></td></tr></table>
       <table>${rows}</table>
       ${isLast?`<table style="margin-top:4px"><tr><td class="ftd">终检 Inspector စစ်ဆေးသူ：${r.inspector}</td><td class="ftd">审核 Reviewer ပြန်လည်စစ်ဆေးသူ：${r.reviewer}</td><td class="ftd">日期 Date ရက်စွဲ：${r.date}</td></tr></table>`:''}
       <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">FM-QC-86_02 : Rev.00</div>
@@ -941,7 +914,7 @@ async function generatePDF(){
     if(i>0)doc.addPage();
     try{
       const canvas=await html2canvas(pages[i],{scale:2.5,useCORS:true,allowTaint:true,backgroundColor:'#fff',width:794,windowWidth:794});
-      doc.addImage(canvas.toDataURL('image/jpeg',0.82),'JPEG',0,0,210,297);
+      doc.addImage(canvas.toDataURL('image/jpeg',0.88),'JPEG',0,0,210,297);
     }catch(e){console.error('Render error:',e);}
   }
   c.remove();
