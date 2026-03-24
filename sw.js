@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inspection-pwa-v3';
+const CACHE_NAME = 'inspection-pwa-v4';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -56,8 +56,9 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
 
-  // NEVER intercept API calls — let them go directly to network
+  // NEVER intercept API calls or Supabase requests — let them go directly to network
   if (url.pathname.startsWith('/api/')) return;
+  if (url.hostname.includes('supabase.co')) return;
 
   const isNavigation = event.request.mode === 'navigate';
   const isIndex = url.origin === self.location.origin && (url.pathname === '/' || url.pathname === '/index.html');
