@@ -808,12 +808,12 @@ async function generatePDF(){
     table{width:100%;border-collapse:collapse}
     td,th{border:1px solid #999;padding:2px 3px;vertical-align:middle;word-break:break-all;font-size:6px}
     th{background:#d6e4f0;font-weight:600}
-    .hdr{background:#1a5276;color:#fff;text-align:center;padding:3px;font-size:7px;font-weight:700;border:none}
-    .hdr2{font-size:6.5px}
-    .val{font-size:7.5px;font-weight:700;text-align:center}
-    .pass{color:#1a8c3e;font-weight:700;font-size:7px;text-align:center}
+    .hdr{background:#1a5276;color:#fff;text-align:center;padding:4px;font-size:9px;font-weight:700;border:none}
+    .hdr2{font-size:7.5px}
+    .val{font-size:8px;font-weight:700;text-align:center}
+    .pass{color:#1a8c3e;font-weight:700;font-size:7.5px;text-align:center}
     .fail{color:#c0392b;font-weight:700}
-    .lbl{font-size:5.5px;color:#333;line-height:1.2}
+    .lbl{font-size:6px;color:#333;line-height:1.25}
     .pc{width:33.33%;vertical-align:top;padding:1px}
     .pc .pl{font-size:5px;background:#f0f0f0;padding:1px 2px;line-height:1.15;border-bottom:1px solid #ccc;min-height:14px}
     .pc .img-wrap{width:100%;height:160px;display:flex;align-items:center;justify-content:center;background:#fafafa;overflow:hidden}
@@ -917,9 +917,9 @@ async function generatePDF(){
     const pgW=isLand?1123:794;
     if(i>0)doc.addPage('a4',isLand?'landscape':'portrait');
     try{
-      const canvas=await html2canvas(pages[i],{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#fff',width:pgW,windowWidth:pgW});
-      // Compress: photo pages use lower quality, data page uses higher
-      const quality=isLand?0.92:0.85;
+      const renderScale=isLand?3:2;
+      const canvas=await html2canvas(pages[i],{scale:renderScale,useCORS:true,allowTaint:true,backgroundColor:'#fff',width:pgW,windowWidth:pgW});
+      const quality=isLand?0.92:0.82;
       const imgW=isLand?297:210;
       const imgH=isLand?210:297;
       doc.addImage(canvas.toDataURL('image/jpeg',quality),'JPEG',0,0,imgW,imgH);
