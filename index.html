@@ -815,17 +815,24 @@ async function generatePDF(){
     .lbl{font-size:5.5px;color:#333;line-height:1.2}
     .pc{width:33.33%;vertical-align:top;padding:1px}
     .pc .pl{font-size:5px;background:#f0f0f0;padding:1px 2px;line-height:1.15;border-bottom:1px solid #ccc;min-height:14px}
-    .pc img{width:100%;height:130px;object-fit:cover;display:block}
-    .pc .emp{height:130px;background:#fafafa}
+    .pc img{width:100%;height:160px;object-fit:contain;display:block;background:#fafafa}
+    .pc .emp{height:160px;background:#fafafa}
     .res{padding:3px;font-size:5.5px;line-height:1.25;border:1px solid #888}
     .resbg{background:#d4edda}
     .ftd{border:none;font-size:5.5px;padding:3px}
-    .pdf-logo-hdr{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0 2px;border-bottom:2px solid #1a5276}
-    .pdf-logo-hdr .logo-img{height:32px}
-    .pdf-logo-hdr .hdr-text{text-align:center}
-    .pdf-logo-hdr .hdr-text .t1{font-size:8px;font-weight:700;color:#1a5276;letter-spacing:1px}
-    .pdf-logo-hdr .hdr-text .t2{font-size:5.5px;color:#555;margin-top:1px}
-    .pdf-sub-hdr{background:#1a5276;color:#fff;text-align:center;padding:3px 0;font-size:6.5px;font-weight:600;margin-top:2px;border-radius:2px}
+    .pdf-logo-hdr{display:flex;align-items:center;justify-content:center;gap:8px;padding:5px 0 4px;border-bottom:2px solid #1a5276}
+    .senia-logo{display:inline-flex;align-items:baseline;font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:18px;color:#3d3d3d;letter-spacing:1.5px;line-height:1;position:relative}
+    .senia-logo .leaf{position:relative;display:inline-block}
+    .senia-logo .leaf::before{content:"I";display:inline}
+    .senia-logo .leaf::after{content:"";position:absolute;top:-6px;left:3px;width:8px;height:10px;background:#2eac6b;border-radius:0 8px 0 8px;transform:rotate(-30deg)}
+    .senia-intl{font-family:Arial,Helvetica,sans-serif;font-size:6px;color:#555;letter-spacing:4px;margin-top:0px;text-align:center}
+    .pdf-hdr-right{text-align:center;margin-left:6px}
+    .pdf-hdr-right .t1{font-size:7.5px;font-weight:700;color:#1a5276}
+    .pdf-hdr-right .t2{font-size:5px;color:#555;margin-top:1px}
+    .pdf-sub-hdr{background:#1a5276;color:#fff;text-align:center;padding:3px 0;font-size:6px;font-weight:600;margin-top:2px}
+    .photo-pg-hdr{display:flex;align-items:center;gap:6px;padding:2px 0 3px;border-bottom:1.5px solid #1a5276;margin-bottom:3px}
+    .photo-pg-hdr .mini-logo{font-family:Arial,Helvetica,sans-serif;font-weight:900;font-size:10px;color:#3d3d3d;letter-spacing:1px;white-space:nowrap}
+    .photo-pg-hdr .mini-logo .lf{color:#2eac6b}
   </style>`;
 
   // Dimension results
@@ -849,12 +856,13 @@ async function generatePDF(){
       <td class="pass">${dimR(vals)}</td></tr>`;
   }).join('');
 
-  const LOGO_SVG='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNjAgNTAiIHdpZHRoPSIyNjAiIGhlaWdodD0iNTAiPgogIDx0ZXh0IHg9IjAiIHk9IjM1IiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iMzgiIGZpbGw9IiMzZDNkM2QiIGxldHRlci1zcGFjaW5nPSIzIj5TRU48L3RleHQ+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTA4LDIpIj4KICAgIDxyZWN0IHg9IjIiIHk9IjE0IiB3aWR0aD0iNyIgaGVpZ2h0PSIyMyIgcng9IjEiIGZpbGw9IiMzZDNkM2QiLz4KICAgIDxwYXRoIGQ9Ik01LjUsMTQgQzgsNiAxNCwyIDE4LDEuNSBDMTUsNSAxMCwxMCA1LjUsMTRaIiBmaWxsPSIjMmVhYzZiIi8+CiAgPC9nPgogIDx0ZXh0IHg9IjEyMiIgeT0iMzUiIGZvbnQtZmFtaWx5PSJBcmlhbCxIZWx2ZXRpY2Esc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjkwMCIgZm9udC1zaXplPSIzOCIgZmlsbD0iIzNkM2QzZCIgbGV0dGVyLXNwYWNpbmc9IjMiPkE8L3RleHQ+CiAgPHRleHQgeD0iMjgiIHk9IjQ4IiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI0MDAiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiM1NTUiIGxldHRlci1zcGFjaW5nPSI2Ij5JTlRFUk5BVElPTkFMPC90ZXh0Pgo8L3N2Zz4K';
-
   const p1=`<div class="pg">
     <div class="pdf-logo-hdr">
-      <img class="logo-img" src="${LOGO_SVG}" alt="Senia">
-      <div class="hdr-text">
+      <div style="text-align:center">
+        <div class="senia-logo">SEN<span class="leaf"></span>A</div>
+        <div class="senia-intl">INTERNATIONAL</div>
+      </div>
+      <div class="pdf-hdr-right">
         <div class="t1">森雅国际有限公司 Senia International Co., Ltd.</div>
         <div class="t2">บริษัท เซเนีย อินเตอร์เนชั่นแนล จำกัด</div>
       </div>
@@ -904,8 +912,8 @@ async function generatePDF(){
     }
     const isLast=end>=PHOTO_SLOTS.length;
     return `<div class="pg">
-      <div style="display:flex;align-items:center;gap:6px;padding:2px 0 3px;border-bottom:1.5px solid #1a5276;margin-bottom:3px">
-        <img src="${LOGO_SVG}" style="height:18px">
+      <div class="photo-pg-hdr">
+        <div class="mini-logo">SEN<span class="lf">i</span>A</div>
         <div style="flex:1;display:flex;justify-content:space-between;font-size:6px">
           <span>PO订单号 PO No. <b>${r.poOrderNo}</b></span>
           <span>产品型号 Model <b>${r.colorFilmModel}</b></span>
@@ -919,7 +927,10 @@ async function generatePDF(){
   }
 
   c.innerHTML=CSS+p1+photoPage(0,15)+photoPage(15,29);
-  await new Promise(r=>setTimeout(r,600));
+  // Wait for all images to load before rendering
+  const imgs=c.querySelectorAll('img');
+  await Promise.all(Array.from(imgs).map(img=>img.complete?Promise.resolve():new Promise(r=>{img.onload=r;img.onerror=r;})));
+  await new Promise(r=>setTimeout(r,800));
 
   const pages=c.querySelectorAll('.pg');
   const{jsPDF}=window.jspdf;
@@ -928,8 +939,8 @@ async function generatePDF(){
   for(let i=0;i<pages.length;i++){
     if(i>0)doc.addPage();
     try{
-      const canvas=await html2canvas(pages[i],{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#fff',width:794,windowWidth:794});
-      doc.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',0,0,210,297);
+      const canvas=await html2canvas(pages[i],{scale:3,useCORS:true,allowTaint:true,backgroundColor:'#fff',width:794,windowWidth:794});
+      doc.addImage(canvas.toDataURL('image/png'),'PNG',0,0,210,297);
     }catch(e){console.error('Render error:',e);}
   }
   c.remove();
