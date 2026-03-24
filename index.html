@@ -282,8 +282,21 @@ async function apiCall(method, path, body=null){
     const opts = {method, headers:{'Content-Type':'application/json'}};
     if(body) opts.body = JSON.stringify(body);
     const resp = await fetch(API_BASE + path, opts);
-    if(!resp.ok) { const err = await resp.json(); throw new Error(err.error||'请求失败'); }
-    return await resp.json();
+    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    const isJson = contentType.includes('application/json');
+
+    if(!isJson){
+      // Server returned HTML (probably SW cache fallback) — go offline
+      serverOnline = false;
+      updateSyncUI();
+      throw new Error('服务器未响应');
+    }
+
+    const payload = await resp.json();
+    if(!resp.ok){
+      throw new Error((payload && payload.error) || ('请求失败: HTTP ' + resp.status));
+    }
+    return payload;
   } catch(e){
     console.warn('API call failed:', e.message);
     throw e;
@@ -292,9 +305,17 @@ async function apiCall(method, path, body=null){
 
 async function checkServer(){
   try{
-    await fetch(API_BASE+'/api/reports',{method:'GET',signal:AbortSignal.timeout(3000)});
+    // AbortSignal.timeout not supported on older Android; use AbortController
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 3000);
+    const resp = await fetch(API_BASE+'/api/reports',{method:'GET', signal:ctrl.signal});
+    clearTimeout(timer);
+    const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+    if(!resp.ok || !contentType.includes('application/json')){
+      throw new Error('Not JSON API');
+    }
     serverOnline=true;
-  } catch{ serverOnline=false; }
+  } catch(e){ serverOnline=false; console.log('Server check:', e.message||'offline'); }
   updateSyncUI();
 }
 

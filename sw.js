@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inspection-pwa-v2';
+const CACHE_NAME = 'inspection-pwa-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -55,6 +55,10 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
+  // NEVER intercept API calls — let them go directly to network
+  if (url.pathname.startsWith('/api/')) return;
+
   const isNavigation = event.request.mode === 'navigate';
   const isIndex = url.origin === self.location.origin && (url.pathname === '/' || url.pathname === '/index.html');
 
