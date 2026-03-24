@@ -220,6 +220,7 @@ const USERS = {
 
 // FIX #6: Gloss standard options
 const GLOSS_OPTIONS = ['7±1°','3~5','5~8','6~10','8~12','自定义'];
+const THICKNESS_STD_OPTIONS = ['±0.13mm','±0.15mm','±0.20mm','±0.25mm','±0.30mm','±0.50mm','自定义'];
 
 const INSPECT_ITEMS = [
   { key:'heightDiff', name:'高低差', en:'Height Difference', my:'အမြင့်အနိမ့်ခြားနားချက်', std:'≤0.10mm' },
@@ -500,6 +501,7 @@ function renderReportForm(){
 
   // FIX #6: Gloss std selector
   const glossOptions=GLOSS_OPTIONS.map(o=>`<option value="${o}" ${r.dimensions.glossStd===o?'selected':''}>${o}</option>`).join('');
+  const thicknessStdOptions=THICKNESS_STD_OPTIONS.map(o=>`<option value="${o}" ${r.dimensions.thicknessStd===o?'selected':''}>${o}</option>`).join('');
 
   let html=`
   <div class="tabs">
@@ -566,7 +568,9 @@ function renderReportForm(){
         <div class="measure-grid cols-6">${r.dimensions.width.map((v,i)=>`<input class="measure-input" type="number" step="0.01" inputmode="decimal" placeholder="${i+1}" value="${v}" onchange="UD('width',${i},this.value)" ${ro}>`).join('')}</div>
       </div>
       <div class="dim-section">
-        <div class="dim-label">厚度 Thickness အထူ <span class="std">${r.dimensions.thicknessStd}</span></div>
+        <div class="dim-label">厚度 Thickness အထူ
+          <select style="font-size:.78rem;padding:2px 6px;border:1px solid #ccc;border-radius:4px" onchange="UDS('thicknessStd',this.value)" ${dis}>${thicknessStdOptions}</select>
+        </div>
         <div class="measure-grid cols-6">${r.dimensions.thickness.map((v,i)=>`<input class="measure-input" type="number" step="0.01" inputmode="decimal" placeholder="${i+1}" value="${v}" onchange="UD('thickness',${i},this.value)" ${ro}>`).join('')}</div>
       </div>
       <div class="dim-section">
