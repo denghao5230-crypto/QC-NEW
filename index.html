@@ -904,6 +904,7 @@ async function generatePDF(){
       <td style="font-size:6px;width:50%">产品型号 Product Model ကုန်ပစ္စည်းမော်ဒယ် <b>${r.colorFilmModel}</b></td></tr></table>
       <table>${rows}</table>
       ${isLast?`<table style="margin-top:4px"><tr><td class="ftd">终检 Inspector စစ်ဆေးသူ：${r.inspector}</td><td class="ftd">审核 Reviewer ပြန်လည်စစ်ဆေးသူ：${r.reviewer}</td><td class="ftd">日期 Date ရက်စွဲ：${r.date}</td></tr></table>`:''}
+      ${r.status==='approved'?'<div class="pass-stamp"><div class="inner"><div class="t">PASS</div><div class="d">'+r.updatedAt.slice(0,10)+'</div></div></div>':''}
       <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">FM-QC-86_02 : Rev.00</div>
     </div>`;
   }
