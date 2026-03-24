@@ -32,10 +32,10 @@ DROP POLICY IF EXISTS "Allow all on reports" ON reports;
 CREATE POLICY "Allow all on users" ON users FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on reports" ON reports FOR ALL USING (true) WITH CHECK (true);
 
--- 插入默认用户
+-- 插入默认用户（先清理旧账号）
+DELETE FROM users WHERE username IN ('admin','inspector1','inspector2','supervisor1');
+
 INSERT INTO users (username, password, role, name) VALUES
-  ('admin', '123456', 'supervisor', '管理员'),
-  ('inspector1', '123456', 'inspector', '质检员1'),
-  ('inspector2', '123456', 'inspector', '质检员2'),
-  ('supervisor1', '123456', 'supervisor', '主管1')
-ON CONFLICT (username) DO NOTHING;
+  ('inspector1', 'Senia#123q', 'inspector', 'Htet Aung'),
+  ('supervisor1', 'Senia#123.', 'supervisor', 'Mr. Jianhuai Luo')
+ON CONFLICT (username) DO UPDATE SET password=EXCLUDED.password, role=EXCLUDED.role, name=EXCLUDED.name;
