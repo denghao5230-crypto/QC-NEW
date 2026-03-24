@@ -917,9 +917,9 @@ async function generatePDF(){
     const pgW=isLand?1123:794;
     if(i>0)doc.addPage('a4',isLand?'landscape':'portrait');
     try{
-      const renderScale=isLand?3:2.8;
+      const renderScale=3;
       const canvas=await html2canvas(pages[i],{scale:renderScale,useCORS:true,allowTaint:true,backgroundColor:'#fff',width:pgW,windowWidth:pgW});
-      const quality=0.90;
+      const quality=0.92;
       const imgW=isLand?297:210;
       const imgH=isLand?210:297;
       doc.addImage(canvas.toDataURL('image/jpeg',quality),'JPEG',0,0,imgW,imgH);
