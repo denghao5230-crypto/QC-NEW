@@ -425,10 +425,12 @@ function logout(){
 function switchTab(tab){
   APP.currentTab=tab;
   document.querySelectorAll('#bottomNav button').forEach(b=>b.classList.remove('active'));
-  document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active');
+  const tabEl=document.getElementById('tab'+tab.charAt(0).toUpperCase()+tab.slice(1));
+  if(tabEl)tabEl.classList.add('active');
   if(tab==='list')renderReportList();
   else if(tab==='new')startNewReport();
   else if(tab==='me')renderProfile();
+  else if(tab==='trash')renderTrash();
 }
 
 function showToast(msg,type='info'){
@@ -521,7 +523,7 @@ function renderReportForm(){
       <div class="form-row">
         <div class="field"><label>彩膜型号 Color Film ရောင်စုံဖလင်</label><input value="${r.colorFilmModel}" onchange="UF('colorFilmModel',this.value)" placeholder="LQ15179-1" ${ro}></div>
         <div class="field"><label>产品类别 Product ကုန်ပစ္စည်းအမျိုးအစား</label>
-          <select onchange="UF('productType',this.value)" ${dis}>${['SPC','WPC','LVT'].map(o=>`<option ${r.productType===o?'selected':''}>${o}</option>`).join('')}</select>
+          <select onchange="UF('productType',this.value)" ${dis}>${['SPC','LSPC','WPC','LVT'].map(o=>`<option ${r.productType===o?'selected':''}>${o}</option>`).join('')}</select>
         </div>
       </div>
       <div class="form-row">
@@ -627,6 +629,7 @@ function renderReportForm(){
       <button class="btn btn-danger btn-sm" onclick="rejectReport()" style="flex:1">❌ 驳回 Reject</button>`:''}
     <button class="btn btn-outline btn-sm" onclick="generatePDF()" style="flex:1">📄 PDF</button>
     <button class="btn btn-outline btn-sm" onclick="switchTab('list')" style="flex:1">← 返回 Back</button>
+    <button class="btn btn-danger btn-sm" onclick="trashReport()" style="flex:1">🗑 删除 Delete</button>
   </div>`;
 
   document.getElementById('mainContent').innerHTML=html;
@@ -718,11 +721,60 @@ async function rejectReport(){
   showToast('已驳回 Rejected','error');switchTab('list');
 }
 
+// ===== RECYCLE BIN =====
+async function trashReport(){
+  if(!confirm('确定删除此报告？\nDelete this report?'))return;
+  const r=APP.currentReport;r.status='trashed';r.trashedAt=new Date().toISOString();
+  await saveReport(r);APP.reports=await localGetAll();
+  showToast('已移入回收站 Moved to trash','info');switchTab('list');
+}
+
+async function restoreReport(id){
+  const r=APP.reports.find(x=>x.id===id);if(!r)return;
+  r.status='draft';delete r.trashedAt;
+  await saveReport(r);APP.reports=await localGetAll();
+  showToast('已恢复 Restored','success');switchTab('trash');
+}
+
+async function permanentDelete(id){
+  if(!confirm('永久删除此报告？此操作不可恢复！\nPermanently delete? This cannot be undone!'))return;
+  // Remove from local
+  if(APP.db){
+    await new Promise(res=>{const tx=APP.db.transaction('reports','readwrite');tx.objectStore('reports').delete(id);tx.oncomplete=()=>res();});
+  }
+  // Remove from Supabase
+  if(serverOnline){
+    try{await sbFetch('reports?id=eq.'+encodeURIComponent(id),{method:'DELETE'});}catch(e){console.warn('Cloud delete failed:',e.message);}
+  }
+  APP.reports=APP.reports.filter(x=>x.id!==id);
+  showToast('已永久删除 Permanently deleted','info');switchTab('trash');
+}
+
+function renderTrash(){
+  document.getElementById('headerTitle').textContent='回收站 Recycle Bin';
+  const trashed=APP.reports.filter(r=>r.status==='trashed');
+  trashed.sort((a,b)=>new Date(b.trashedAt||b.updatedAt)-new Date(a.trashedAt||a.updatedAt));
+
+  if(!trashed.length){
+    document.getElementById('mainContent').innerHTML=`<div class="empty-state"><div class="icon">🗑</div><p>回收站为空 Recycle bin is empty</p></div>`;return;
+  }
+
+  document.getElementById('mainContent').innerHTML=`<div id="trashList">${trashed.map(r=>`
+    <div class="report-item" style="opacity:0.8">
+      <div style="width:40px;height:40px;background:#f0f0f0;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem">🗑</div>
+      <div class="report-info"><h3>PO: ${r.poOrderNo||'--'} ${r.colorFilmModel||''}</h3><p>${r.date} · ${r.inspector||''}</p></div>
+      <div style="display:flex;gap:4px;flex-direction:column">
+        <button class="btn btn-sm btn-outline" style="padding:4px 8px;font-size:.7rem" onclick="event.stopPropagation();restoreReport('${r.id}')">恢复</button>
+        <button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:.7rem" onclick="event.stopPropagation();permanentDelete('${r.id}')">永删</button>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
 // ===== REPORT LIST =====
 async function renderReportList(){
   await syncReports();
   document.getElementById('headerTitle').textContent=APP.user.role==='supervisor'?'审核中心 Review':'我的报告 Reports';
-  let reports=APP.reports;
+  let reports=APP.reports.filter(r=>r.status!=='trashed');
   if(APP.user.role==='inspector')reports=reports.filter(r=>r.createdBy===APP.user.username);
   reports.sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
 
@@ -753,7 +805,7 @@ function filterList(status,btn){
 // ===== PROFILE =====
 function renderProfile(){
   document.getElementById('headerTitle').textContent='个人中心 Profile';
-  const myR=APP.reports.filter(r=>APP.user.role==='inspector'?r.createdBy===APP.user.username:true);
+  const myR=APP.reports.filter(r=>r.status!=='trashed'&&(APP.user.role==='inspector'?r.createdBy===APP.user.username:true));
   document.getElementById('mainContent').innerHTML=`
     <div class="card"><div class="card-header">👤 个人信息</div><div class="card-body">
       <p style="margin-bottom:6px"><strong>用户名：</strong>${APP.user.username}</p>
@@ -771,6 +823,10 @@ function renderProfile(){
     <div class="card"><div class="card-body">
       <p style="font-size:.72rem;color:#999">v2.0 · 森雅国际有限公司 Senia International</p>
       <p style="font-size:.72rem;color:#999;margin-top:4px">服务器: ${serverOnline?'✅ 在线 (多设备同步)':'⚠️ 离线 (仅本机)'}</p>
+    </div></div>
+    <div class="card" onclick="switchTab('trash')" style="cursor:pointer"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between">
+      <span>🗑 回收站 Recycle Bin</span>
+      <span style="background:#f0f0f0;padding:2px 10px;border-radius:10px;font-size:.85rem;font-weight:600">${APP.reports.filter(r=>r.status==='trashed').length}</span>
     </div></div>`;
 }
 
