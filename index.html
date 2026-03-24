@@ -15,8 +15,10 @@ html{font-size:14px;-webkit-text-size-adjust:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Noto Sans Myanmar','Noto Sans Thai','Microsoft YaHei',sans-serif;background:#f0f2f5;color:#333;min-height:100vh}
 input,select,textarea,button{font-family:inherit;font-size:inherit}
 
-.page{display:none;min-height:100vh}
-.page.active{display:flex;flex-direction:column}
+.page{display:none;min-height:100vh;opacity:0;transition:opacity .3s ease}
+.page.active{display:flex;flex-direction:column;opacity:1}
+.page.fade-out{opacity:0}
+.page.fade-in{opacity:1}
 .header{background:linear-gradient(135deg,#1a5276,#2980b9);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .header h1{font-size:1.05rem;font-weight:600}
 .header-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:.85rem}
@@ -408,16 +410,27 @@ async function doLogin(){
   }
 
   await syncReports();
-  document.getElementById('loginPage').classList.remove('active');
-  document.getElementById('mainApp').classList.add('active');
-  document.getElementById('userBadge').textContent=APP.user.name;
-  switchTab('list');
+  // Smooth page transition: login -> main
+  const loginEl=document.getElementById('loginPage');
+  const mainEl=document.getElementById('mainApp');
+  loginEl.classList.add('fade-out');
+  setTimeout(()=>{
+    loginEl.classList.remove('active','fade-out');
+    mainEl.classList.add('active');
+    document.getElementById('userBadge').textContent=APP.user.name;
+    switchTab('list');
+  },300);
 }
 
 function logout(){
   APP.user=null;APP.currentReport=null;
-  document.getElementById('mainApp').classList.remove('active');
-  document.getElementById('loginPage').classList.add('active');
+  const mainEl=document.getElementById('mainApp');
+  const loginEl=document.getElementById('loginPage');
+  mainEl.classList.add('fade-out');
+  setTimeout(()=>{
+    mainEl.classList.remove('active','fade-out');
+    loginEl.classList.add('active');
+  },300);
 }
 
 // ===== TABS =====
@@ -761,16 +774,31 @@ function renderProfile(){
     </div></div>
     <div class="card"><div class="card-header">📊 统计</div><div class="card-body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center">
-        <div style="padding:10px;background:#e8f0fe;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#1a5276">${myR.length}</div><div style="font-size:.75rem;color:#666">总数 Total</div></div>
-        <div style="padding:10px;background:#cce5ff;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#004085">${myR.filter(x=>x.status==='submitted').length}</div><div style="font-size:.75rem;color:#666">待审核</div></div>
-        <div style="padding:10px;background:#d4edda;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#155724">${myR.filter(x=>x.status==='approved').length}</div><div style="font-size:.75rem;color:#666">已通过</div></div>
-        <div style="padding:10px;background:#f8d7da;border-radius:10px"><div style="font-size:1.5rem;font-weight:700;color:#721c24">${myR.filter(x=>x.status==='rejected').length}</div><div style="font-size:.75rem;color:#666">已驳回</div></div>
+        <div onclick="showFilteredReports('all')" style="padding:10px;background:#e8f0fe;border-radius:10px;cursor:pointer;transition:transform .15s" onpointerdown="this.style.transform='scale(0.95)'" onpointerup="this.style.transform=''"><div style="font-size:1.5rem;font-weight:700;color:#1a5276">${myR.length}</div><div style="font-size:.75rem;color:#666">总数 Total</div></div>
+        <div onclick="showFilteredReports('submitted')" style="padding:10px;background:#cce5ff;border-radius:10px;cursor:pointer;transition:transform .15s" onpointerdown="this.style.transform='scale(0.95)'" onpointerup="this.style.transform=''"><div style="font-size:1.5rem;font-weight:700;color:#004085">${myR.filter(x=>x.status==='submitted').length}</div><div style="font-size:.75rem;color:#666">待审核</div></div>
+        <div onclick="showFilteredReports('approved')" style="padding:10px;background:#d4edda;border-radius:10px;cursor:pointer;transition:transform .15s" onpointerdown="this.style.transform='scale(0.95)'" onpointerup="this.style.transform=''"><div style="font-size:1.5rem;font-weight:700;color:#155724">${myR.filter(x=>x.status==='approved').length}</div><div style="font-size:.75rem;color:#666">已通过</div></div>
+        <div onclick="showFilteredReports('rejected')" style="padding:10px;background:#f8d7da;border-radius:10px;cursor:pointer;transition:transform .15s" onpointerdown="this.style.transform='scale(0.95)'" onpointerup="this.style.transform=''"><div style="font-size:1.5rem;font-weight:700;color:#721c24">${myR.filter(x=>x.status==='rejected').length}</div><div style="font-size:.75rem;color:#666">已驳回</div></div>
       </div>
     </div></div>
     <div class="card"><div class="card-body">
       <p style="font-size:.72rem;color:#999">v2.0 · 森雅国际有限公司 Senia International</p>
       <p style="font-size:.72rem;color:#999;margin-top:4px">服务器: ${serverOnline?'✅ 在线 (多设备同步)':'⚠️ 离线 (仅本机)'}</p>
     </div></div>`;
+}
+
+// Click stat card to view filtered reports
+function showFilteredReports(status){
+  switchTab('list');
+  // After list renders, apply filter
+  setTimeout(()=>{
+    if(status!=='all'){
+      document.querySelectorAll('#rptList .report-item').forEach(el=>{
+        el.style.display=(el.dataset.status===status)?'flex':'none';
+      });
+    }
+    const sNames={all:'全部报告',submitted:'待审核报告',approved:'已通过报告',rejected:'已驳回报告'};
+    document.getElementById('headerTitle').textContent=sNames[status]||'报告列表';
+  },100);
 }
 
 // ===== FIX #5: PDF generation - use Blob URL approach for Android compatibility =====
@@ -803,6 +831,12 @@ async function generatePDF(){
     .res{padding:3px;font-size:5.5px;line-height:1.25;border:1px solid #888}
     .resbg{background:#d4edda}
     .ftd{border:none;font-size:5.5px;padding:3px}
+    .pdf-logo-hdr{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0 2px;border-bottom:2px solid #1a5276}
+    .pdf-logo-hdr .logo-img{height:32px}
+    .pdf-logo-hdr .hdr-text{text-align:center}
+    .pdf-logo-hdr .hdr-text .t1{font-size:8px;font-weight:700;color:#1a5276;letter-spacing:1px}
+    .pdf-logo-hdr .hdr-text .t2{font-size:5.5px;color:#555;margin-top:1px}
+    .pdf-sub-hdr{background:#1a5276;color:#fff;text-align:center;padding:3px 0;font-size:6.5px;font-weight:600;margin-top:2px;border-radius:2px}
   </style>`;
 
   // Dimension results
@@ -826,9 +860,17 @@ async function generatePDF(){
       <td class="pass">${dimR(vals)}</td></tr>`;
   }).join('');
 
+  const LOGO_SVG='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNjAgNTAiIHdpZHRoPSIyNjAiIGhlaWdodD0iNTAiPgogIDx0ZXh0IHg9IjAiIHk9IjM1IiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iMzgiIGZpbGw9IiMzZDNkM2QiIGxldHRlci1zcGFjaW5nPSIzIj5TRU48L3RleHQ+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTA4LDIpIj4KICAgIDxyZWN0IHg9IjIiIHk9IjE0IiB3aWR0aD0iNyIgaGVpZ2h0PSIyMyIgcng9IjEiIGZpbGw9IiMzZDNkM2QiLz4KICAgIDxwYXRoIGQ9Ik01LjUsMTQgQzgsNiAxNCwyIDE4LDEuNSBDMTUsNSAxMCwxMCA1LjUsMTRaIiBmaWxsPSIjMmVhYzZiIi8+CiAgPC9nPgogIDx0ZXh0IHg9IjEyMiIgeT0iMzUiIGZvbnQtZmFtaWx5PSJBcmlhbCxIZWx2ZXRpY2Esc2Fucy1zZXJpZiIgZm9udC13ZWlnaHQ9IjkwMCIgZm9udC1zaXplPSIzOCIgZmlsbD0iIzNkM2QzZCIgbGV0dGVyLXNwYWNpbmc9IjMiPkE8L3RleHQ+CiAgPHRleHQgeD0iMjgiIHk9IjQ4IiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI0MDAiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IiM1NTUiIGxldHRlci1zcGFjaW5nPSI2Ij5JTlRFUk5BVElPTkFMPC90ZXh0Pgo8L3N2Zz4K';
+
   const p1=`<div class="pg">
-    <table><tr><td colspan="9" class="hdr">森雅国际有限公司 บริษัท เซเนีย อินเตอร์เนชั่นแนล จำกัด Senia International Co., Ltd.</td></tr>
-    <tr><td colspan="9" class="hdr hdr2">成品出厂终检报告 Finished Product Release Inspection Report รายงานตรวจสอบปล่อยผลิตภัณฑ์สำเร็จรูป ကုန်ချော ထုတ်ပေးခြင်းဆိုင်ရာ စစ်ဆေးမှုအစီရင်ခံစာ</td></tr></table>
+    <div class="pdf-logo-hdr">
+      <img class="logo-img" src="${LOGO_SVG}" alt="Senia">
+      <div class="hdr-text">
+        <div class="t1">森雅国际有限公司 Senia International Co., Ltd.</div>
+        <div class="t2">บริษัท เซเนีย อินเตอร์เนชั่นแนล จำกัด</div>
+      </div>
+    </div>
+    <div class="pdf-sub-hdr">成品出厂终检报告 Finished Product Release Inspection Report รายงานตรวจสอบปล่อยผลิตภัณฑ์สำเร็จรูป ကုန်ချော ထုတ်ပေးခြင်းဆိုင်ရာ စစ်ဆေးမှုအစီရင်ခံစာ</div>
     <table><tr>
       <td class="lbl" style="width:11%">日期 Date\nวันที่ ရက်စွဲ</td><td class="val" style="width:13%">${r.date}</td>
       <td class="lbl" style="width:7%">PO No.</td><td class="val" style="width:13%">${r.poOrderNo}</td>
@@ -873,8 +915,14 @@ async function generatePDF(){
     }
     const isLast=end>=PHOTO_SLOTS.length;
     return `<div class="pg">
-      <table style="margin-bottom:3px"><tr><td style="font-size:6px;width:50%">PO订单号 PO Order No. အမှာစာနံပါတ် <b>${r.poOrderNo}</b></td>
-      <td style="font-size:6px;width:50%">产品型号 Product Model ကုန်ပစ္စည်းမော်ဒယ် <b>${r.colorFilmModel}</b></td></tr></table>
+      <div style="display:flex;align-items:center;gap:6px;padding:2px 0 3px;border-bottom:1.5px solid #1a5276;margin-bottom:3px">
+        <img src="${LOGO_SVG}" style="height:18px">
+        <div style="flex:1;display:flex;justify-content:space-between;font-size:6px">
+          <span>PO订单号 PO No. <b>${r.poOrderNo}</b></span>
+          <span>产品型号 Model <b>${r.colorFilmModel}</b></span>
+          <span>日期 Date <b>${r.date}</b></span>
+        </div>
+      </div>
       <table>${rows}</table>
       ${isLast?`<table style="margin-top:4px"><tr><td class="ftd">终检 Inspector စစ်ဆေးသူ：${r.inspector}</td><td class="ftd">审核 Reviewer ပြန်လည်စစ်ဆေးသူ：${r.reviewer}</td><td class="ftd">日期 Date ရက်စွဲ：${r.date}</td></tr></table>`:''}
       <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">FM-QC-86_02 : Rev.00</div>
