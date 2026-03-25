@@ -1,13 +1,34 @@
-# 森雅验货系统 - Netlify 部署配置
+# 森雅验货系统 - Netlify + Neon 部署配置
 
 [build]
   publish = "."
-  # 纯静态站点，无需构建步骤
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "18"
 
-# SPA 路由回退：所有非文件路径 → index.html
+# Netlify Functions → /api/* 路由
+[[redirects]]
+  from = "/api/login"
+  to = "/.netlify/functions/login"
+  status = 200
+
+[[redirects]]
+  from = "/api/reports"
+  to = "/.netlify/functions/reports"
+  status = 200
+
+[[redirects]]
+  from = "/api/register"
+  to = "/.netlify/functions/register"
+  status = 200
+
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+
+# SPA 路由回退：所有非文件、非API路径 → index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -21,7 +42,7 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
-# Service Worker 不缓存，确保及时更新
+# Service Worker 不缓存
 [[headers]]
   for = "/sw.js"
   [headers.values]

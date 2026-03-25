@@ -1,0 +1,13 @@
+{
+  "name": "senia-inspection-pwa",
+  "version": "4.0.0",
+  "description": "森雅验货系统 - Netlify + Neon",
+  "private": true,
+  "scripts": {
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "bcryptjs": "^2.4.3"
+  }
+}
