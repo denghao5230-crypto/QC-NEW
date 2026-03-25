@@ -9,7 +9,7 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='20' fill='%231a5276'/><text x='96' y='120' font-size='100' text-anchor='middle' fill='white'>验</text></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%231a5276'/><text x='96' y='105' font-size='62' font-weight='700' text-anchor='middle' fill='white' font-family='Arial'>S</text><path d='M96 30 C104 50,116 62,96 88 C76 62,88 50,96 30Z' fill='%232ecc71' opacity='0.85'/><text x='96' y='158' font-size='28' font-weight='700' text-anchor='middle' fill='rgba(255,255,255,0.7)' font-family='Arial'>SENIA</text></svg>",
       "sizes": "192x192",
       "type": "image/svg+xml"
     }

@@ -28,10 +28,10 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
 
 /* Login */
 .login-page.active{background:linear-gradient(135deg,#1a5276 0%,#2980b9 50%,#3498db 100%);align-items:center;justify-content:center;padding:20px}
-.login-logo{width:80px;height:80px;background:rgba(255,255,255,.15);border-radius:20px;display:flex;align-items:center;justify-content:center;margin-bottom:16px}
-.login-logo span{font-size:2.5rem;color:#fff}
-.login-title{color:#fff;font-size:1.3rem;margin-bottom:4px;font-weight:700}
-.login-subtitle{color:rgba(255,255,255,.7);font-size:.82rem;margin-bottom:24px}
+.login-logo{width:min(280px, 70vw);margin-bottom:20px;display:flex;align-items:center;justify-content:center}
+.login-logo svg{width:100%;height:auto}
+.login-title{display:none}
+.login-subtitle{color:rgba(255,255,255,.8);font-size:.85rem;margin-bottom:24px;letter-spacing:1px}
 .login-card{background:#fff;border-radius:16px;padding:24px 20px;width:100%;max-width:360px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
 .login-card h2{text-align:center;margin-bottom:16px;color:#1a5276;font-size:1.05rem}
 .form-group{margin-bottom:14px}
@@ -156,9 +156,24 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
 
 <!-- LOGIN PAGE -->
 <div class="page login-page active" id="loginPage">
-  <div class="login-logo"><span>✅</span></div>
-  <div class="login-title">森雅验货系统</div>
-  <div class="login-subtitle">Senia Inspection System</div>
+  <div class="login-logo">
+    <svg viewBox="0 0 480 100" xmlns="http://www.w3.org/2000/svg">
+      <!-- SENIA text -->
+      <text x="0" y="62" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700" fill="rgba(255,255,255,0.95)" letter-spacing="5">SEN</text>
+      <!-- Leaf on the i -->
+      <g transform="translate(168, 8)">
+        <path d="M8 0 C12 8, 18 14, 8 28 C-2 14, 4 8, 8 0Z" fill="#2ecc71" opacity="0.9"/>
+        <path d="M8 4 C8 12, 6 20, 8 28" stroke="rgba(255,255,255,0.5)" stroke-width="0.8" fill="none"/>
+      </g>
+      <text x="162" y="62" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700" fill="rgba(255,255,255,0.95)" letter-spacing="5">I</text>
+      <text x="185" y="62" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700" fill="rgba(255,255,255,0.95)" letter-spacing="5">A</text>
+      <!-- INTERNATIONAL -->
+      <text x="2" y="80" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="400" fill="rgba(255,255,255,0.6)" letter-spacing="8">INTERNATIONAL</text>
+      <!-- 森雅國際 -->
+      <text x="248" y="64" font-family="'PingFang SC','Microsoft YaHei',sans-serif" font-size="48" font-weight="700" fill="rgba(255,255,255,0.85)">森雅國際</text>
+    </svg>
+  </div>
+  <div class="login-subtitle">Quality Inspection System 验货系统</div>
   <div class="login-card">
     <h2>登录 Sign in</h2>
     <div class="form-group">
