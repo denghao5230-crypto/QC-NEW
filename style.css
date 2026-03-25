@@ -16,7 +16,7 @@ input,select,textarea,button{font-family:inherit;font-size:inherit}
 .bottom-nav button svg{width:22px;height:22px}
 
 /* Login */
-.login-page.active{background:linear-gradient(135deg,#1a5276 0%,#2980b9 50%,#3498db 100%);align-items:center;justify-content:center;padding:20px}
+.login-page.active{background:linear-gradient(135deg,#1a5276 0%,#2980b9 50%,#3498db 100%);align-items:center;justify-content:flex-start;padding:20px;padding-top:18vh}
 .login-logo{width:min(280px, 68vw);margin-bottom:-6px;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .login-logo img{width:100%;height:auto;display:block;margin:-18% 0 -26%}
 .login-title{display:none}
