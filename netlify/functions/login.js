@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { getDb, jsonResponse, errorResponse, handleCors } = require('./db');
+const { signToken } = require('./auth');
 
 exports.handler = async (event) => {
   const cors = handleCors(event);
@@ -32,11 +33,18 @@ exports.handler = async (event) => {
       return errorResponse('用户名或密码错误', 401);
     }
 
-    // 返回用户信息（不含密码）
+    // 生成 JWT Token
+    const token = signToken({
+      username: user.username,
+      name: user.name,
+      role: user.role,
+    });
+
     return jsonResponse({
       username: user.username,
       name: user.name,
       role: user.role,
+      token,
     });
 
   } catch (e) {

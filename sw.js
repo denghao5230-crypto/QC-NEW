@@ -1,8 +1,12 @@
-const CACHE_NAME = 'inspection-pwa-v7';
+const CACHE_NAME = 'inspection-pwa-v8';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
+  '/style.css',
+  '/app.js',
+  '/pdf.js',
   '/manifest.json',
+  '/logo-white.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
 ];
@@ -61,8 +65,8 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
 
-  // Don't intercept Supabase requests — always go to network
-  if (url.hostname.includes('supabase.co')) return;
+  // Don't intercept API requests — always go to network
+  if (url.pathname.startsWith('/api/')) return;
 
   // Don't intercept Netlify internal paths
   if (url.pathname.startsWith('/.netlify/')) return;
