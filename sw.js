@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inspection-pwa-v5';
+const CACHE_NAME = 'inspection-pwa-v7';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -46,7 +46,9 @@ async function cacheFirst(request) {
   const url = new URL(request.url);
   if (
     request.method === 'GET' &&
-    (url.origin === self.location.origin || url.hostname === 'cdnjs.cloudflare.com')
+    (url.origin === self.location.origin ||
+     url.hostname === 'cdnjs.cloudflare.com' ||
+     url.hostname === 'gstatic.com')
   ) {
     const cache = await caches.open(CACHE_NAME);
     cache.put(request, response.clone());
@@ -59,10 +61,10 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
 
-  // 不拦截 Supabase 请求 — 直接走网络
+  // Don't intercept Supabase requests — always go to network
   if (url.hostname.includes('supabase.co')) return;
 
-  // 不拦截 Netlify 内部路径
+  // Don't intercept Netlify internal paths
   if (url.pathname.startsWith('/.netlify/')) return;
 
   const isNavigation = event.request.mode === 'navigate';
