@@ -1,9 +1,10 @@
-const CACHE_NAME = 'inspection-pwa-v4';
+const CACHE_NAME = 'inspection-pwa-v5';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
 ];
 
 self.addEventListener('install', event => {
@@ -23,8 +24,10 @@ self.addEventListener('activate', event => {
 async function networkFirst(request) {
   try {
     const response = await fetch(request);
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, response.clone());
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, response.clone());
+    }
     return response;
   } catch (error) {
     const cached = await caches.match(request);
@@ -56,9 +59,11 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
 
-  // NEVER intercept API calls or Supabase requests — let them go directly to network
-  if (url.pathname.startsWith('/api/')) return;
+  // 不拦截 Supabase 请求 — 直接走网络
   if (url.hostname.includes('supabase.co')) return;
+
+  // 不拦截 Netlify 内部路径
+  if (url.pathname.startsWith('/.netlify/')) return;
 
   const isNavigation = event.request.mode === 'navigate';
   const isIndex = url.origin === self.location.origin && (url.pathname === '/' || url.pathname === '/index.html');

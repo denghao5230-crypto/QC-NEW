@@ -1,0 +1,42 @@
+# 森雅验货系统 - Netlify 部署配置
+
+[build]
+  publish = "."
+  # 纯静态站点，无需构建步骤
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# SPA 路由回退：所有非文件路径 → index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# 安全和性能 Headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Service Worker 不缓存，确保及时更新
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    Service-Worker-Allowed = "/"
+
+# manifest.json 不强缓存
+[[headers]]
+  for = "/manifest.json"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Content-Type = "application/manifest+json"
+
+# HTML 不缓存
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
