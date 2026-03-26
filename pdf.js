@@ -78,10 +78,9 @@ async function generatePDF() {
     .resbg{background:#d4edda}
     .ftd{border:none;font-size:5.5px;padding:3px}
     .photo-pg-hdr{display:flex;align-items:center;gap:6px;padding:2px 0 3px;border-bottom:1.5px solid #1a5276;margin-bottom:3px}
-    .pass-stamp{position:absolute;top:52px;right:8px;width:80px;height:80px;border:4px solid #23b187;border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-15deg);opacity:0.85;z-index:10}
-    .pass-stamp .inner{text-align:center;line-height:1}
-    .pass-stamp .t{font-size:22px;font-weight:900;color:#23b187;letter-spacing:2px}
-    .pass-stamp .d{font-size:6px;color:#23b187;margin-top:2px}
+    .pass-stamp{position:absolute;top:52px;right:8px;width:80px;height:80px;border:4px solid #23b187;border-radius:50%;text-align:center;padding-top:18px;opacity:0.85;z-index:10;background:rgba(255,255,255,0.3)}
+    .pass-stamp .t{font-size:22px;font-weight:900;color:#23b187;letter-spacing:2px;line-height:1}
+    .pass-stamp .d{font-size:6px;color:#23b187;margin-top:2px;line-height:1}
   </style>`;
 
   // Parse nominal values from size field
@@ -149,7 +148,7 @@ async function generatePDF() {
     <table><tr><td class="ftd" style="width:40%">终检 Inspector ผู้ตรวจสอบ နောက်ဆုံးစစ်ဆေးသူ：Htet Aung</td>
     <td class="ftd" style="width:40%">审核 Reviewer ผู้ทบทวน ပြန်လည်စစ်ဆေးသူ：Mr. Jianhuai Luo</td>
     <td class="ftd" style="width:20%"></td></tr></table>
-    ${r.status === 'approved' ? '<div class="pass-stamp"><div class="inner"><div class="t">PASS</div><div class="d">' + r.updatedAt.slice(0, 10) + '</div></div></div>' : ''}
+    ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + r.updatedAt.slice(0, 10) + '</div></div>' : ''}
     <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">DCN:FM-00-QC-023-001</div>
   </div>`;
 
@@ -173,7 +172,7 @@ async function generatePDF() {
       <td style="font-size:6px;width:50%">产品型号 Product Model ကုန်ပစ္စည်းမော်ဒယ် <b>${escapeHtml(r.colorFilmModel)}</b></td></tr></table>
       <table>${rows}</table>
       ${isLast ? `<table style="margin-top:4px"><tr><td class="ftd">终检 Inspector စစ်ဆေးသူ：Htet Aung</td><td class="ftd">审核 Reviewer ပြန်လည်စစ်ဆေးသူ：Mr. Jianhuai Luo</td><td class="ftd">日期 Date ရက်စွဲ：${r.date}</td></tr></table>` : ''}
-      ${r.status === 'approved' ? '<div class="pass-stamp"><div class="inner"><div class="t">PASS</div><div class="d">' + r.updatedAt.slice(0, 10) + '</div></div></div>' : ''}
+      ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + r.updatedAt.slice(0, 10) + '</div></div>' : ''}
       <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">FM-QC-86_02 : Rev.00</div>
     </div>`;
   }
