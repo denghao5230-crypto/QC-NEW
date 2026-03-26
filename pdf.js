@@ -78,7 +78,7 @@ async function generatePDF() {
     .resbg{background:#d4edda}
     .ftd{border:none;font-size:5.5px;padding:3px}
     .photo-pg-hdr{display:flex;align-items:center;gap:6px;padding:2px 0 3px;border-bottom:1.5px solid #1a5276;margin-bottom:3px}
-    .pass-stamp{position:absolute;top:52px;right:8px;width:80px;height:80px;border:4px solid #23b187;border-radius:50%;text-align:center;padding-top:18px;opacity:0.85;z-index:10;background:rgba(255,255,255,0.3)}
+    .pass-stamp{position:absolute;top:2px;right:10px;width:80px;height:80px;border:4px solid #23b187;border-radius:50%;text-align:center;padding-top:18px;opacity:0.92;z-index:10;background:rgba(255,255,255,0.45)}
     .pass-stamp .t{font-size:22px;font-weight:900;color:#23b187;letter-spacing:2px;line-height:1}
     .pass-stamp .d{font-size:6px;color:#23b187;margin-top:2px;line-height:1}
   </style>`;
