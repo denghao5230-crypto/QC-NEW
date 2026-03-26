@@ -78,10 +78,10 @@ async function generatePDF() {
     .resbg{background:#d4edda}
     .ftd{border:none;font-size:5.5px;padding:3px}
     .photo-pg-hdr{display:flex;align-items:center;gap:6px;padding:2px 0 3px;border-bottom:1.5px solid #1a5276;margin-bottom:3px}
-    .pass-stamp{position:absolute;top:18px;right:20px;width:80px;height:80px;border:4px solid #27ae60;border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-15deg);opacity:0.85;z-index:10}
+    .pass-stamp{position:absolute;top:52px;right:8px;width:80px;height:80px;border:4px solid #23b187;border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-15deg);opacity:0.85;z-index:10}
     .pass-stamp .inner{text-align:center;line-height:1}
-    .pass-stamp .t{font-size:22px;font-weight:900;color:#27ae60;letter-spacing:2px}
-    .pass-stamp .d{font-size:6px;color:#27ae60;margin-top:2px}
+    .pass-stamp .t{font-size:22px;font-weight:900;color:#23b187;letter-spacing:2px}
+    .pass-stamp .d{font-size:6px;color:#23b187;margin-top:2px}
   </style>`;
 
   // Parse nominal values from size field
