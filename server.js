@@ -15,6 +15,33 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const REPORTS_FILE = path.join(DATA_DIR, 'reports.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+
+// ===== Simple JWT =====
+function createToken(payload, expiresInHours = 72) {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const body = Buffer.from(JSON.stringify({ ...payload, iat: now, exp: now + expiresInHours * 3600 })).toString('base64url');
+  const signature = crypto.createHmac('sha256', JWT_SECRET).update(header + '.' + body).digest('base64url');
+  return header + '.' + body + '.' + signature;
+}
+
+function verifyToken(token) {
+  try {
+    const [header, body, signature] = token.split('.');
+    const expected = crypto.createHmac('sha256', JWT_SECRET).update(header + '.' + body).digest('base64url');
+    if (signature !== expected) return null;
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch { return null; }
+}
+
+function getAuthUser(req) {
+  const auth = req.headers['authorization'];
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  return verifyToken(auth.slice(7));
+}
 
 // Ensure data directory
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -68,7 +95,7 @@ function json(res, code, data) {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   res.end(JSON.stringify(data));
 }
@@ -80,7 +107,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     });
     return res.end();
   }
@@ -89,6 +116,11 @@ const server = http.createServer(async (req, res) => {
   const pathname = url.pathname;
 
   // ===== API Routes =====
+
+  // GET /api/health
+  if (pathname === '/api/health' && req.method === 'GET') {
+    return json(res, 200, { status: 'ok', timestamp: new Date().toISOString() });
+  }
 
   // POST /api/login
   if (pathname === '/api/login' && req.method === 'POST') {
@@ -99,14 +131,22 @@ const server = http.createServer(async (req, res) => {
     if (!user) return json(res, 401, { error: '用户不存在' });
     if (user.password !== body.password) return json(res, 401, { error: '密码错误' });
     if (body.role && user.role !== body.role) return json(res, 401, { error: `角色不匹配，该用户角色为: ${user.role === 'supervisor' ? '主管' : '质检员'}` });
-    return json(res, 200, { username: body.username, role: user.role, name: user.name });
+    const token = createToken({ username: body.username, role: user.role, name: user.name });
+    return json(res, 200, { username: body.username, role: user.role, name: user.name, token });
   }
 
   // GET /api/reports
   if (pathname === '/api/reports' && req.method === 'GET') {
     const reports = loadJSON(REPORTS_FILE, []);
     // Strip photo data from list view to save bandwidth
-    const light = reports.map(r => ({ ...r, photos: undefined, _photoCount: Object.keys(r.photos || {}).length }));
+    const light = reports.map(r => {
+      const copy = { ...r };
+      const photoKeys = Object.keys(r.photos || {});
+      copy._photoCount = photoKeys.length;
+      copy.photos = {};
+      photoKeys.forEach(k => { copy.photos[k] = '__HAS_PHOTO__'; });
+      return copy;
+    });
     return json(res, 200, light);
   }
 

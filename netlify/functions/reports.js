@@ -38,6 +38,14 @@ exports.handler = async (event) => {
         report.id = row.id;
         report.status = row.status || report.status;
         report.createdBy = row.created_by || report.createdBy;
+        // Strip base64 photo data from list response to avoid exceeding payload limits
+        if (report.photos) {
+          const photoKeys = Object.keys(report.photos);
+          report._photoCount = photoKeys.length;
+          report.photos = {};
+          // Keep only a flag that photos exist, not the actual data
+          photoKeys.forEach(k => { report.photos[k] = '__HAS_PHOTO__'; });
+        }
         return report;
       });
       return jsonResponse(reports);

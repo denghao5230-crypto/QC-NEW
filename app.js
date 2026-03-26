@@ -33,6 +33,12 @@ async function apiFetch(endpoint, opts = {}) {
   const text = await resp.text();
   const data = text ? JSON.parse(text) : null;
   if (!resp.ok) {
+    // Token expired or invalid → auto logout
+    if (resp.status === 401 && APP.user) {
+      showToast('登录已过期，请重新登录', 'warning');
+      logout();
+      throw new Error('TOKEN_EXPIRED');
+    }
     throw new Error((data && data.error) || 'API 请求失败: ' + resp.status);
   }
   return data;
@@ -262,10 +268,41 @@ function updateSyncUI() {
 async function syncReports() {
   if (serverOnline) {
     try {
-      const reports = await apiFetch('/reports');
-      APP.reports = reports || [];
-      for (const r of APP.reports) { await localSave(r); }
+      const cloudReports = await apiFetch('/reports');
+      if (!cloudReports) { APP.reports = await localGetAll(); return; }
+      const localReports = await localGetAll();
+      const localMap = {};
+      localReports.forEach(r => { localMap[r.id] = r; });
+
+      // Merge: cloud data + preserve local photos (cloud strips them to save bandwidth)
+      for (const cr of cloudReports) {
+        const local = localMap[cr.id];
+        if (local && local.photos && cr.photos) {
+          // Restore local photo data where cloud only has placeholders
+          Object.keys(cr.photos).forEach(k => {
+            if (cr.photos[k] === '__HAS_PHOTO__' && local.photos[k] && local.photos[k] !== '__HAS_PHOTO__') {
+              cr.photos[k] = local.photos[k];
+            }
+          });
+          // Remove placeholder entries
+          Object.keys(cr.photos).forEach(k => {
+            if (cr.photos[k] === '__HAS_PHOTO__') delete cr.photos[k];
+          });
+        }
+        cr.syncStatus = 'synced';
+        await localSave(cr);
+      }
+
+      // Also keep local-only reports (not yet synced)
+      for (const lr of localReports) {
+        if (!cloudReports.find(cr => cr.id === lr.id) && lr.syncStatus === 'pending') {
+          cloudReports.push(lr);
+        }
+      }
+
+      APP.reports = cloudReports;
     } catch (e) {
+      if (e.message === 'TOKEN_EXPIRED') return;
       console.warn('Sync failed:', e.message);
       showToast('同步失败，使用本地数据', 'warning');
       APP.reports = await localGetAll();
@@ -280,10 +317,21 @@ async function saveReport(report) {
   await localSave(report);
   if (serverOnline) {
     try {
-      await apiFetch('/reports', { method: 'POST', body: JSON.stringify(report) });
+      // Clone report and limit photo payload for cloud save
+      const cloudReport = JSON.parse(JSON.stringify(report));
+      // Check total payload size estimate
+      const payloadStr = JSON.stringify(cloudReport);
+      const sizeMB = payloadStr.length / (1024 * 1024);
+      if (sizeMB > 5) {
+        console.warn(`Report payload too large (${sizeMB.toFixed(1)}MB), stripping photos for cloud sync`);
+        cloudReport.photos = {};
+        showToast('照片太多，仅文字数据同步到云端', 'warning');
+      }
+      await apiFetch('/reports', { method: 'POST', body: JSON.stringify(cloudReport) });
       report.syncStatus = 'synced';
       await localSave(report);
     } catch (e) {
+      if (e.message === 'TOKEN_EXPIRED') return;
       console.warn('Cloud save failed:', e.message);
       report.syncStatus = 'pending';
       await localSave(report);
@@ -298,14 +346,25 @@ async function saveReport(report) {
 async function syncPendingReports() {
   const local = await localGetAll();
   const pending = local.filter(r => r.syncStatus === 'pending');
+  let synced = 0;
   for (const r of pending) {
     try {
-      await apiFetch('/reports', { method: 'POST', body: JSON.stringify(r) });
+      const cloudReport = JSON.parse(JSON.stringify(r));
+      const sizeMB = JSON.stringify(cloudReport).length / (1024 * 1024);
+      if (sizeMB > 5) { cloudReport.photos = {}; }
+      await apiFetch('/reports', { method: 'POST', body: JSON.stringify(cloudReport) });
       r.syncStatus = 'synced';
       await localSave(r);
-    } catch (e) { console.warn('Sync failed for', r.id, e.message); }
+      synced++;
+    } catch (e) {
+      if (e.message === 'TOKEN_EXPIRED') return;
+      console.warn('Sync failed for', r.id, e.message);
+    }
   }
-  if (pending.length) showToast(`已同步 ${pending.length} 份报告`, 'success');
+  if (synced > 0) showToast(`已同步 ${synced} 份报告`, 'success');
+  if (synced < pending.length) {
+    showToast(`${pending.length - synced} 份报告同步失败`, 'warning');
+  }
 }
 
 // ===== INIT =====
