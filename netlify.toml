@@ -1,4 +1,4 @@
-# 森雅验货系统 - Netlify + Neon 部署配置
+# 森雅验货系统 - Netlify + Supabase 部署配置
 
 [build]
   publish = "."
@@ -21,6 +21,11 @@
 [[redirects]]
   from = "/api/register"
   to = "/.netlify/functions/register"
+  status = 200
+
+[[redirects]]
+  from = "/api/photos"
+  to = "/.netlify/functions/photos"
   status = 200
 
 [[redirects]]

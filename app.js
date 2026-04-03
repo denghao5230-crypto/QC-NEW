@@ -274,21 +274,31 @@ async function syncReports() {
       const localMap = {};
       localReports.forEach(r => { localMap[r.id] = r; });
 
-      // Merge: cloud data + preserve local photos (cloud strips them to save bandwidth)
+      // Merge: cloud data + preserve local photos
       for (const cr of cloudReports) {
         const local = localMap[cr.id];
-        if (local && local.photos && cr.photos) {
-          // Restore local photo data where cloud only has placeholders
-          Object.keys(cr.photos).forEach(k => {
-            if (cr.photos[k] === '__HAS_PHOTO__' && local.photos[k] && local.photos[k] !== '__HAS_PHOTO__') {
+        if (!cr.photos) cr.photos = {};
+
+        // Step 1: Preserve all local photos (highest priority — never lose local data)
+        if (local && local.photos) {
+          Object.keys(local.photos).forEach(k => {
+            if (local.photos[k] && local.photos[k] !== '__HAS_PHOTO__') {
               cr.photos[k] = local.photos[k];
             }
           });
-          // Remove placeholder entries
-          Object.keys(cr.photos).forEach(k => {
-            if (cr.photos[k] === '__HAS_PHOTO__') delete cr.photos[k];
+        }
+
+        // Step 2: For cloud photos that are placeholders and we don't have locally,
+        // try to fetch from the new photos API (enables cross-device sync)
+        const missingSlots = Object.keys(cr.photos).filter(k => cr.photos[k] === '__HAS_PHOTO__');
+        if (missingSlots.length > 0) {
+          // Lazy-load: fetch individual photos on demand, not during sync
+          // Mark them so the UI can trigger lazy loading
+          missingSlots.forEach(k => {
+            cr.photos[k] = '__CLOUD_PHOTO__'; // distinguishable from local placeholder
           });
         }
+
         cr.syncStatus = 'synced';
         await localSave(cr);
       }
@@ -312,23 +322,109 @@ async function syncReports() {
   }
 }
 
+/**
+ * Lazy-load a single photo from cloud when user views it
+ */
+async function fetchCloudPhoto(reportId, slotIndex, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const result = await apiFetch(`/photos?reportId=${reportId}&slot=${slotIndex}`);
+      if (result && result.dataUrl && result.dataUrl.startsWith('data:')) {
+        // Save to current report and local DB
+        if (APP.currentReport && APP.currentReport.id === reportId) {
+          APP.currentReport.photos[slotIndex] = result.dataUrl;
+          await localSave(APP.currentReport);
+        }
+        // Also update in reports array
+        const report = APP.reports.find(r => r.id === reportId);
+        if (report) {
+          report.photos[slotIndex] = result.dataUrl;
+          await localSave(report);
+        }
+        return result.dataUrl;
+      }
+      // 如果返回的不是有效图片数据，不要重试
+      if (result && result.dataUrl === null) return null;
+    } catch (e) {
+      console.warn(`Failed to fetch photo ${slotIndex} for ${reportId} (attempt ${attempt + 1}):`, e.message);
+      if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
+/**
+ * UI handler: lazy-load a cloud photo and refresh the slot
+ */
+async function loadCloudPhoto(reportId, slotIndex) {
+  const slot = document.getElementById(`photo-slot-${slotIndex}`);
+  if (slot) {
+    slot.innerHTML = '<div class="icon" style="color:#3498db">⏳</div><div style="font-size:.6rem;color:#999">加载中...</div>';
+  }
+  const dataUrl = await fetchCloudPhoto(reportId, slotIndex);
+  if (dataUrl && slot) {
+    slot.innerHTML = `<img src="${dataUrl}"><button class="delete-photo" onclick="event.stopPropagation();delPhoto(${slotIndex})">✕</button><div class="label">${PHOTO_SLOTS[slotIndex] || ''}</div>`;
+    slot.classList.remove('cloud-pending');
+    slot.setAttribute('onclick', `openPhotoMenu(${slotIndex})`);
+  } else if (slot) {
+    slot.innerHTML = '<div class="icon" style="color:#e74c3c">⚠</div><div style="font-size:.6rem;color:#e74c3c">加载失败</div><div class="label">' + (PHOTO_SLOTS[slotIndex] || '') + '</div>';
+  }
+}
+
 async function saveReport(report) {
   report.updatedAt = new Date().toISOString();
   await localSave(report);
   if (serverOnline) {
     try {
-      // Clone report and limit photo payload for cloud save
+      // Clone report and ALWAYS strip photos from the main payload
+      // Photos are uploaded separately via /api/photos endpoint
       const cloudReport = JSON.parse(JSON.stringify(report));
-      // Check total payload size estimate
-      const payloadStr = JSON.stringify(cloudReport);
-      const sizeMB = payloadStr.length / (1024 * 1024);
-      if (sizeMB > 5) {
-        console.warn(`Report payload too large (${sizeMB.toFixed(1)}MB), stripping photos for cloud sync`);
-        cloudReport.photos = {};
-        showToast('照片太多，仅文字数据同步到云端', 'warning');
-      }
+      const photosToSync = cloudReport.photos || {};
+      cloudReport.photos = {}; // Always strip photos from report JSON
+
       await apiFetch('/reports', { method: 'POST', body: JSON.stringify(cloudReport) });
-      report.syncStatus = 'synced';
+
+      // Upload photos individually (each within Netlify's body limit)
+      let photoErrors = 0;
+      const photoKeys = Object.keys(photosToSync).filter(k =>
+        photosToSync[k] &&
+        photosToSync[k] !== '__HAS_PHOTO__' &&
+        photosToSync[k] !== '__CLOUD_PHOTO__' &&
+        photosToSync[k].startsWith('data:')  // 只上传真正的base64数据
+      );
+      for (const slotIdx of photoKeys) {
+        try {
+          await apiFetch('/photos', {
+            method: 'POST',
+            body: JSON.stringify({
+              reportId: report.id,
+              slotIndex: parseInt(slotIdx),
+              dataUrl: photosToSync[slotIdx]
+            })
+          });
+        } catch (photoErr) {
+          console.warn(`Photo ${slotIdx} upload failed:`, photoErr.message);
+          photoErrors++;
+        }
+      }
+      if (photoErrors > 0) {
+        showToast(`${photoErrors}张照片上传失败，将在下次自动重试`, 'warning');
+      }
+
+      // Sync photo deletions to cloud
+      if (report._deletedPhotoSlots && report._deletedPhotoSlots.length > 0) {
+        for (const slot of report._deletedPhotoSlots) {
+          try {
+            await apiFetch(`/photos?reportId=${report.id}&slot=${slot}`, { method: 'DELETE' });
+          } catch (delErr) {
+            console.warn(`Photo ${slot} cloud delete failed:`, delErr.message);
+          }
+        }
+        delete report._deletedPhotoSlots;
+      }
+
+      // 只有所有照片都上传成功才标记为synced
+      report.syncStatus = photoErrors > 0 ? 'pending' : 'synced';
       await localSave(report);
     } catch (e) {
       if (e.message === 'TOKEN_EXPIRED') return;
@@ -350,9 +446,32 @@ async function syncPendingReports() {
   for (const r of pending) {
     try {
       const cloudReport = JSON.parse(JSON.stringify(r));
-      const sizeMB = JSON.stringify(cloudReport).length / (1024 * 1024);
-      if (sizeMB > 5) { cloudReport.photos = {}; }
+      const photosToSync = cloudReport.photos || {};
+      cloudReport.photos = {}; // Strip photos, upload separately
       await apiFetch('/reports', { method: 'POST', body: JSON.stringify(cloudReport) });
+
+      // Upload photos individually
+      const photoKeys = Object.keys(photosToSync).filter(k =>
+        photosToSync[k] &&
+        photosToSync[k] !== '__HAS_PHOTO__' &&
+        photosToSync[k] !== '__CLOUD_PHOTO__' &&
+        photosToSync[k].startsWith('data:')  // 只上传真正的base64数据
+      );
+      for (const slotIdx of photoKeys) {
+        try {
+          await apiFetch('/photos', {
+            method: 'POST',
+            body: JSON.stringify({
+              reportId: r.id,
+              slotIndex: parseInt(slotIdx),
+              dataUrl: photosToSync[slotIdx]
+            })
+          });
+        } catch (photoErr) {
+          console.warn(`Photo ${slotIdx} sync failed for ${r.id}:`, photoErr.message);
+        }
+      }
+
       r.syncStatus = 'synced';
       await localSave(r);
       synced++;
@@ -723,9 +842,11 @@ function renderReportForm() {
     <div class="card"><div class="card-header">📷 照片 Photos</div><div class="card-body">
       <div class="photo-grid">${PHOTO_SLOTS.map((lbl, i) => {
         const img = r.photos[i];
-        return `<div class="photo-slot" onclick="openPhotoMenu(${i})" style="cursor:${dis ? 'default' : 'pointer'}">
-        ${img ? `<img src="${img}">` : '<div class="icon">📷</div>'}
-        ${!dis && img ? `<button class="delete-photo" onclick="event.stopPropagation();delPhoto(${i})">✕</button>` : ''}
+        const isCloudPending = img === '__CLOUD_PHOTO__' || img === '__HAS_PHOTO__';
+        const hasRealPhoto = img && !isCloudPending;
+        return `<div class="photo-slot ${isCloudPending ? 'cloud-pending' : ''}" onclick="${isCloudPending ? `loadCloudPhoto('${r.id}',${i})` : `openPhotoMenu(${i})`}" style="cursor:${dis && !isCloudPending ? 'default' : 'pointer'}" id="photo-slot-${i}">
+        ${hasRealPhoto ? `<img src="${img}">` : isCloudPending ? '<div class="icon" style="color:#3498db">⏳</div><div style="font-size:.6rem;color:#3498db">点击加载</div>' : '<div class="icon">📷</div>'}
+        ${!dis && hasRealPhoto ? `<button class="delete-photo" onclick="event.stopPropagation();delPhoto(${i})">✕</button>` : ''}
         <div class="label">${lbl}</div>
       </div>`;
       }).join('')}</div>
@@ -747,8 +868,8 @@ function renderReportForm() {
       ${r.status === 'submitted' && APP.user.role === 'supervisor' ? `<button class="btn btn-danger" onclick="rejectReport()">❌ 驳回</button>` : ''}
     </div>
     <div class="form-button-row" style="margin-top:8px">
+      <button class="btn btn-pdf" onclick="generatePDF()">📄 生成PDF</button>
       ${!isReadOnly ? `<button class="btn btn-danger" onclick="trashReport()">🗑 删除</button>` : ''}
-      <button class="btn btn-outline" onclick="generatePDF()">📄 生成PDF</button>
     </div>
   </div></div>
   `;
@@ -779,7 +900,8 @@ function chooseGallery() { closePhotoSheet(); document.getElementById('photoGall
 
 /**
  * Compress image before storing
- * Max dimension: 800px, JPEG quality: 0.65
+ * Max dimension: 1200px, JPEG quality: adaptive based on size
+ * Target: each photo < 200KB base64
  */
 function compressImage(file) {
   return new Promise((resolve, reject) => {
@@ -787,24 +909,41 @@ function compressImage(file) {
     reader.onload = function (ev) {
       const img = new Image();
       img.onload = function () {
-        const canvas = document.createElement('canvas');
-        let w = img.width, h = img.height;
-        const MAX_DIM = 800;
-        if (w > MAX_DIM || h > MAX_DIM) {
-          if (w > h) { h = h * MAX_DIM / w; w = MAX_DIM; }
-          else { w = w * MAX_DIM / h; h = MAX_DIM; }
+        try {
+          const canvas = document.createElement('canvas');
+          let w = img.width, h = img.height;
+          const MAX_DIM = 1200;
+          if (w > MAX_DIM || h > MAX_DIM) {
+            if (w > h) { h = h * MAX_DIM / w; w = MAX_DIM; }
+            else { w = w * MAX_DIM / h; h = MAX_DIM; }
+          }
+          canvas.width = Math.round(w);
+          canvas.height = Math.round(h);
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // Adaptive quality: try higher quality first, reduce if too large
+          let quality = 0.7;
+          let dataUrl = canvas.toDataURL('image/jpeg', quality);
+          const TARGET_SIZE = 200 * 1024; // 200KB in base64 chars (~150KB binary)
+          while (dataUrl.length > TARGET_SIZE && quality > 0.3) {
+            quality -= 0.1;
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+
+          const sizeKB = Math.round(dataUrl.length * 0.75 / 1024);
+          console.log(`Photo compressed: ${img.width}x${img.height} → ${canvas.width}x${canvas.height}, q=${quality.toFixed(1)}, ~${sizeKB}KB`);
+          resolve(dataUrl);
+        } catch (canvasErr) {
+          reject(new Error('照片压缩失败: ' + canvasErr.message));
         }
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
-        const sizeKB = Math.round(dataUrl.length * 0.75 / 1024);
-        console.log(`Photo compressed: ${img.width}x${img.height} → ${Math.round(w)}x${Math.round(h)}, ~${sizeKB}KB`);
-        resolve(dataUrl);
       };
-      img.onerror = () => reject(new Error('图片加载失败'));
+      img.onerror = () => reject(new Error('图片加载失败，请重试'));
       img.src = ev.target.result;
     };
+    reader.onerror = () => reject(new Error('文件读取失败，请重试'));
     reader.readAsDataURL(file);
   });
 }
@@ -815,13 +954,7 @@ async function handlePhoto(e) {
   try {
     const dataUrl = await compressImage(file);
     APP.currentReport.photos[APP.editingPhotoSlot] = dataUrl;
-
-    // Warn if total photo size exceeds threshold
-    const totalSize = Object.values(APP.currentReport.photos)
-      .reduce((sum, p) => sum + (p ? p.length * 0.75 : 0), 0);
-    if (totalSize > 5 * 1024 * 1024) {
-      showToast('照片总大小超过5MB，同步可能较慢', 'warning');
-    }
+    debouncedAutoSave(); // Auto-save to IndexedDB immediately
 
     renderReportForm();
     showStep(3, document.querySelectorAll('.tabs button')[3]);
@@ -837,6 +970,10 @@ document.getElementById('photoGallery').addEventListener('change', handlePhoto);
 
 function delPhoto(i) {
   delete APP.currentReport.photos[i];
+  // Track deleted photo slots for cloud sync
+  if (!APP.currentReport._deletedPhotoSlots) APP.currentReport._deletedPhotoSlots = [];
+  if (!APP.currentReport._deletedPhotoSlots.includes(i)) APP.currentReport._deletedPhotoSlots.push(i);
+  debouncedAutoSave();
   renderReportForm();
   showStep(3, document.querySelectorAll('.tabs button')[3]);
 }

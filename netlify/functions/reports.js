@@ -12,40 +12,68 @@ exports.handler = async (event) => {
   }
   const currentUser = authResult.user;
 
-  const sql = getDb();
+  const supabase = getDb();
   const method = event.httpMethod;
 
   try {
     // GET /api/reports — 获取报告
     if (method === 'GET') {
-      let rows;
-      if (currentUser.role === 'supervisor') {
-        // 主管可以看所有报告
-        rows = await sql`
-          SELECT id, data, status, created_by, created_at, updated_at
-          FROM reports ORDER BY updated_at DESC
-        `;
-      } else {
-        // 质检员只能看自己的报告
-        rows = await sql`
-          SELECT id, data, status, created_by, created_at, updated_at
-          FROM reports WHERE created_by = ${currentUser.username}
-          ORDER BY updated_at DESC
-        `;
+      let query = supabase
+        .from('reports')
+        .select('id, data, status, created_by, created_at, updated_at')
+        .order('updated_at', { ascending: false });
+
+      // 质检员只能看自己的报告
+      if (currentUser.role !== 'supervisor') {
+        query = query.eq('created_by', currentUser.username);
       }
-      const reports = rows.map(row => {
+
+      const { data: rows, error } = await query;
+      if (error) throw error;
+
+      // Also fetch photo slot indices from the report_photos table
+      let photoSlotMap = {};
+      try {
+        const { data: photoRows, error: photoErr } = await supabase
+          .from('report_photos')
+          .select('report_id, slot_index');
+
+        if (!photoErr && photoRows) {
+          photoRows.forEach(pr => {
+            if (!photoSlotMap[pr.report_id]) photoSlotMap[pr.report_id] = [];
+            photoSlotMap[pr.report_id].push(pr.slot_index);
+          });
+        }
+      } catch (e) {
+        // Table may not exist yet — ignore
+        console.warn('report_photos table not available:', e.message);
+      }
+
+      const reports = (rows || []).map(row => {
         const report = row.data || {};
         report.id = row.id;
         report.status = row.status || report.status;
         report.createdBy = row.created_by || report.createdBy;
-        // Strip base64 photo data from list response to avoid exceeding payload limits
+
+        // Merge photo indicators from both JSONB and report_photos table
+        const photoFlags = {};
+        // From JSONB (legacy)
         if (report.photos) {
-          const photoKeys = Object.keys(report.photos);
-          report._photoCount = photoKeys.length;
-          report.photos = {};
-          // Keep only a flag that photos exist, not the actual data
-          photoKeys.forEach(k => { report.photos[k] = '__HAS_PHOTO__'; });
+          Object.keys(report.photos).forEach(k => {
+            if (report.photos[k] && report.photos[k] !== '__HAS_PHOTO__') {
+              photoFlags[k] = '__HAS_PHOTO__';
+            }
+          });
         }
+        // From report_photos table (new)
+        if (photoSlotMap[row.id]) {
+          photoSlotMap[row.id].forEach(slot => {
+            photoFlags[slot] = '__HAS_PHOTO__';
+          });
+        }
+
+        report.photos = photoFlags;
+        report._photoCount = Object.keys(photoFlags).length;
         return report;
       });
       return jsonResponse(reports);
@@ -60,8 +88,12 @@ exports.handler = async (event) => {
 
       // 检查权限：质检员只能修改自己的报告
       if (currentUser.role !== 'supervisor') {
-        const existing = await sql`SELECT created_by FROM reports WHERE id = ${report.id}`;
-        if (existing.length > 0 && existing[0].created_by !== currentUser.username) {
+        const { data: existing } = await supabase
+          .from('reports')
+          .select('created_by')
+          .eq('id', report.id);
+
+        if (existing && existing.length > 0 && existing[0].created_by !== currentUser.username) {
           return errorResponse('无权修改此报告', 403);
         }
       }
@@ -71,20 +103,17 @@ exports.handler = async (event) => {
         return errorResponse('只有主管可以审批报告', 403);
       }
 
-      await sql`
-        INSERT INTO reports (id, data, status, created_by, updated_at)
-        VALUES (
-          ${report.id},
-          ${JSON.stringify(report)},
-          ${report.status || 'draft'},
-          ${report.createdBy || currentUser.username},
-          ${report.updatedAt || new Date().toISOString()}
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          data = ${JSON.stringify(report)},
-          status = ${report.status || 'draft'},
-          updated_at = ${report.updatedAt || new Date().toISOString()}
-      `;
+      const { error } = await supabase
+        .from('reports')
+        .upsert({
+          id: report.id,
+          data: report,
+          status: report.status || 'draft',
+          created_by: report.createdBy || currentUser.username,
+          updated_at: report.updatedAt || new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+      if (error) throw error;
 
       return jsonResponse({ success: true, id: report.id });
     }
@@ -98,13 +127,23 @@ exports.handler = async (event) => {
 
       // 检查权限：质检员只能删除自己的报告
       if (currentUser.role !== 'supervisor') {
-        const existing = await sql`SELECT created_by FROM reports WHERE id = ${id}`;
-        if (existing.length > 0 && existing[0].created_by !== currentUser.username) {
+        const { data: existing } = await supabase
+          .from('reports')
+          .select('created_by')
+          .eq('id', id);
+
+        if (existing && existing.length > 0 && existing[0].created_by !== currentUser.username) {
           return errorResponse('无权删除此报告', 403);
         }
       }
 
-      await sql`DELETE FROM reports WHERE id = ${id}`;
+      const { error } = await supabase
+        .from('reports')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       return jsonResponse({ success: true, deleted: id });
     }
 

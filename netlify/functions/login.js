@@ -17,13 +17,15 @@ exports.handler = async (event) => {
       return errorResponse('请输入用户名和密码');
     }
 
-    const sql = getDb();
-    const rows = await sql`
-      SELECT username, name, role, password_hash
-      FROM users WHERE username = ${username}
-    `;
+    const supabase = getDb();
+    const { data: rows, error } = await supabase
+      .from('users')
+      .select('username, name, role, password_hash')
+      .eq('username', username);
 
-    if (rows.length === 0) {
+    if (error) throw error;
+
+    if (!rows || rows.length === 0) {
       return errorResponse('用户名或密码错误', 401);
     }
 

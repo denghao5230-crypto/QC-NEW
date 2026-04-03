@@ -1,16 +1,18 @@
-// 共享数据库连接模块
-const { neon } = require('@neondatabase/serverless');
+// 共享数据库连接模块 — Supabase
+const { createClient } = require('@supabase/supabase-js');
 
-let _sql = null;
+let _supabase = null;
 
 function getDb() {
-  if (!_sql) {
-    if (!process.env.DATABASE_URL) {
-      throw new Error('DATABASE_URL 环境变量未设置');
+  if (!_supabase) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY;
+    if (!url || !key) {
+      throw new Error('SUPABASE_URL 或 SUPABASE_KEY 环境变量未设置');
     }
-    _sql = neon(process.env.DATABASE_URL);
+    _supabase = createClient(url, key);
   }
-  return _sql;
+  return _supabase;
 }
 
 // CORS 响应头

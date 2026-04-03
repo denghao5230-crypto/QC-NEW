@@ -32,21 +32,33 @@ exports.handler = async (event) => {
       return errorResponse('密码至少4位');
     }
 
-    const sql = getDb();
+    const supabase = getDb();
 
     // 检查用户名是否已存在
-    const existing = await sql`SELECT username FROM users WHERE username = ${username}`;
-    if (existing.length > 0) {
+    const { data: existing, error: checkErr } = await supabase
+      .from('users')
+      .select('username')
+      .eq('username', username);
+
+    if (checkErr) throw checkErr;
+
+    if (existing && existing.length > 0) {
       return errorResponse('用户名已存在');
     }
 
     // bcrypt 哈希密码
     const hash = await bcrypt.hash(password, 10);
 
-    await sql`
-      INSERT INTO users (username, name, role, password_hash)
-      VALUES (${username}, ${name}, ${role}, ${hash})
-    `;
+    const { error: insertErr } = await supabase
+      .from('users')
+      .insert({
+        username,
+        name,
+        role,
+        password_hash: hash,
+      });
+
+    if (insertErr) throw insertErr;
 
     return jsonResponse({ success: true, username, name, role });
 
