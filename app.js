@@ -11,7 +11,9 @@ const APP = {
   currentReport: null,
   currentTab: 'list',
   editingPhotoSlot: null,
-  db: null
+  db: null,
+  syncState: { mode: 'idle', text: '初始化中...' },
+  syncInProgress: false
 };
 
 // ===== XSS PROTECTION =====
@@ -24,14 +26,35 @@ function escapeHtml(str) {
 // ===== API LAYER (with JWT) =====
 async function apiFetch(endpoint, opts = {}) {
   const url = API_BASE + endpoint;
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  const { timeoutMs = 20000, ...fetchOpts } = opts;
+  const headers = { 'Content-Type': 'application/json', ...(fetchOpts.headers || {}) };
   // Attach JWT token if available
   if (APP.token) {
     headers['Authorization'] = 'Bearer ' + APP.token;
   }
-  const resp = await fetch(url, { ...opts, headers });
+  let timer = null;
+  let abortController = null;
+  if (!fetchOpts.signal && timeoutMs > 0) {
+    abortController = new AbortController();
+    fetchOpts.signal = abortController.signal;
+    timer = setTimeout(() => abortController.abort(), timeoutMs);
+  }
+
+  let resp;
+  try {
+    resp = await fetch(url, { ...fetchOpts, headers });
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('请求超时，请检查网络后重试');
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+
   const text = await resp.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch (e) { data = { error: text }; }
+  }
   if (!resp.ok) {
     // Token expired or invalid → auto logout
     if (resp.status === 401 && APP.user) {
@@ -39,15 +62,87 @@ async function apiFetch(endpoint, opts = {}) {
       logout();
       throw new Error('TOKEN_EXPIRED');
     }
-    throw new Error((data && data.error) || 'API 请求失败: ' + resp.status);
+    throw new Error((data && data.error ? `${data.error} (HTTP ${resp.status})` : 'API 请求失败: ' + resp.status));
   }
   return data;
+}
+
+function isRetryableUploadError(error) {
+  const msg = String(error && error.message ? error.message : error || '');
+  return /超时|timeout|Failed to fetch|NetworkError|HTTP 429|HTTP 5\d\d|API 请求失败: 5\d\d/i.test(msg);
+}
+
+async function apiFetchWithRetry(endpoint, opts = {}, conf = {}) {
+  const retries = conf.retries ?? 2;
+  const baseDelayMs = conf.baseDelayMs ?? 900;
+  const timeoutMs = conf.timeoutMs ?? 25000;
+  let lastErr = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await apiFetch(endpoint, { ...opts, timeoutMs });
+    } catch (e) {
+      if (e.message === 'TOKEN_EXPIRED') throw e;
+      lastErr = e;
+      const canRetry = attempt < retries && isRetryableUploadError(e);
+      if (!canRetry) throw e;
+      await new Promise(r => setTimeout(r, baseDelayMs * (attempt + 1)));
+    }
+  }
+  throw lastErr || new Error('请求失败');
 }
 
 let serverOnline = false;
 
 // ===== OFFLINE AUTH (cached sessions) =====
 const OFFLINE_USERS = {};
+
+function isPhotoPlaceholder(value) {
+  return value === '__HAS_PHOTO__' || value === '__CLOUD_PHOTO__';
+}
+
+function isRealPhotoDataUrl(value) {
+  return typeof value === 'string' && value.startsWith('data:image/');
+}
+
+function getUnsyncedPhotoSlots(report) {
+  if (!report || !report.photos) return [];
+  if (!report._uploadedPhotoSlots) {
+    report._uploadedPhotoSlots = {};
+    if (report.syncStatus === 'synced') {
+      Object.keys(report.photos).forEach(k => {
+        if (isRealPhotoDataUrl(report.photos[k]) || isPhotoPlaceholder(report.photos[k])) {
+          report._uploadedPhotoSlots[k] = true;
+        }
+      });
+    }
+  }
+  return Object.keys(report.photos).filter(k => isRealPhotoDataUrl(report.photos[k]) && report._uploadedPhotoSlots[k] !== true);
+}
+
+function setUploadStatus(report, patch = {}) {
+  if (!report) return;
+  report.uploadStatus = {
+    state: report.uploadStatus?.state || 'idle',
+    total: report.uploadStatus?.total || 0,
+    done: report.uploadStatus?.done || 0,
+    failed: report.uploadStatus?.failed || 0,
+    message: report.uploadStatus?.message || '',
+    lastError: report.uploadStatus?.lastError || '',
+    updatedAt: report.uploadStatus?.updatedAt || new Date().toISOString(),
+    ...patch,
+    updatedAt: new Date().toISOString()
+  };
+  if (APP.currentReport && report.id === APP.currentReport.id) {
+    APP.currentReport.uploadStatus = { ...report.uploadStatus };
+    refreshCurrentReportUploadStatusUI();
+  }
+}
+
+function setSyncState(mode, text) {
+  APP.syncState = { mode, text, updatedAt: new Date().toISOString() };
+  updateSyncUI();
+}
 
 function cacheUserSession(username, role, name) {
   OFFLINE_USERS[username] = { role, name, cachedAt: Date.now() };
@@ -117,18 +212,63 @@ function openDB() {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('reports')) db.createObjectStore('reports', { keyPath: 'id' });
     };
-    req.onsuccess = e => { APP.db = e.target.result; resolve(APP.db); };
+    req.onsuccess = e => {
+      APP.db = e.target.result;
+      // Auto-recover if browser unexpectedly closes the connection
+      APP.db.onclose = () => {
+        console.warn('IndexedDB connection closed unexpectedly, will reopen on next save');
+        APP.db = null;
+      };
+      resolve(APP.db);
+    };
     req.onerror = e => reject(e);
   });
 }
 
 async function localSave(report) {
-  if (!APP.db) return;
-  return new Promise(r => {
-    const tx = APP.db.transaction('reports', 'readwrite');
-    tx.objectStore('reports').put(report);
-    tx.oncomplete = () => r();
+  if (!APP.db) {
+    console.warn('IndexedDB not available, attempting to reopen...');
+    try {
+      await openDB();
+    } catch (e) {
+      console.error('Cannot reopen IndexedDB:', e);
+      throw e;
+    }
+  }
+  if (!APP.db) {
+    throw new Error('IndexedDB 不可用');
+  }
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = APP.db.transaction('reports', 'readwrite');
+      tx.objectStore('reports').put(report);
+      tx.oncomplete = () => resolve();
+      tx.onerror = (e) => {
+        console.error('IndexedDB save failed:', e.target.error);
+        showToast('本地保存失败，请检查存储空间', 'error');
+        reject(e.target.error);
+      };
+      tx.onabort = (e) => {
+        console.error('IndexedDB save aborted:', e.target.error);
+        // Likely quota exceeded - warn user
+        showToast('存储空间不足，照片可能丢失！请清理浏览器缓存', 'error');
+        reject(e.target.error);
+      };
+    } catch (e) {
+      console.error('IndexedDB transaction failed:', e);
+      reject(e);
+    }
   });
+}
+
+async function safeLocalSave(report, context = '') {
+  try {
+    await localSave(report);
+    return true;
+  } catch (e) {
+    console.warn(`Local save failed${context ? ` (${context})` : ''}:`, e && e.message ? e.message : e);
+    return false;
+  }
 }
 
 async function localGetAll() {
@@ -136,21 +276,32 @@ async function localGetAll() {
   return new Promise(r => {
     const tx = APP.db.transaction('reports', 'readonly');
     const req = tx.objectStore('reports').getAll();
-    req.onsuccess = () => r(req.result || []);
+    req.onsuccess = () => {
+      const reports = req.result || [];
+      // Ensure critical properties exist on all reports (protect old data)
+      reports.forEach(rep => {
+        if (!rep.photos) rep.photos = {};
+        if (!rep._uploadedPhotoSlots) rep._uploadedPhotoSlots = {};
+      });
+      r(reports);
+    };
     req.onerror = () => r([]);
   });
 }
 
-// ===== Debounce utility =====
+// ===== Debounce utility (with cancel support) =====
 function debounce(fn, delay = 500) {
   let timer;
-  return (...args) => {
+  const debounced = (...args) => {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), delay);
   };
+  debounced.cancel = () => clearTimeout(timer);
+  debounced.flush = () => { clearTimeout(timer); fn(); };
+  return debounced;
 }
 const debouncedAutoSave = debounce(() => {
-  if (APP.currentReport) localSave(APP.currentReport);
+  if (APP.currentReport) safeLocalSave(APP.currentReport, 'debounced-autosave');
 }, 1000);
 
 // ===== DIMENSION VALIDATION =====
@@ -248,21 +399,170 @@ async function checkServer() {
     clearTimeout(timer);
     serverOnline = resp.ok;
   } catch (e) { serverOnline = false; console.warn('Server check:', e.message || 'offline'); }
+  if (!serverOnline) setSyncState('offline', '离线');
   updateSyncUI();
 }
 
 function updateSyncUI() {
   const el = document.getElementById('syncStatus');
   const loginEl = document.getElementById('serverStatus');
+  const state = APP.syncState || { mode: 'idle', text: '' };
+  const text = state.text || (serverOnline ? '已同步 (云端)' : '离线');
+  const safeText = escapeHtml(text);
+  const dotClass = serverOnline ? 'online' : 'offline';
   if (el) {
-    el.innerHTML = serverOnline
-      ? '<span class="sync-dot online"></span> 已同步 (云端)'
-      : '<span class="sync-dot offline"></span> 离线';
+    el.innerHTML = `<span class="sync-dot ${dotClass}"></span> ${safeText}`;
   }
   if (loginEl) {
-    loginEl.textContent = serverOnline ? '✅ 云端已连接 (多设备同步)' : '⚠️ 离线模式 (仅本机数据)';
-    loginEl.style.color = serverOnline ? '#27ae60' : '#e67e22';
+    if (!serverOnline) {
+      loginEl.textContent = '⚠️ 离线模式 (仅本机数据，恢复网络后自动续传)';
+      loginEl.style.color = '#e67e22';
+    } else if (state.mode === 'uploading') {
+      loginEl.textContent = `⏳ ${text}`;
+      loginEl.style.color = '#1a5276';
+    } else if (state.mode === 'warning') {
+      loginEl.textContent = `⚠️ ${text}`;
+      loginEl.style.color = '#e67e22';
+    } else if (state.mode === 'error') {
+      loginEl.textContent = `❌ ${text}`;
+      loginEl.style.color = '#e74c3c';
+    } else {
+      loginEl.textContent = '✅ 云端已连接 (多设备同步)';
+      loginEl.style.color = '#27ae60';
+    }
   }
+}
+
+async function refreshSyncStateFromLocal() {
+  const all = await localGetAll();
+  let pendingReports = 0;
+  let pendingPhotos = 0;
+  all.forEach(r => {
+    const unsynced = getUnsyncedPhotoSlots(r).length;
+    pendingPhotos += unsynced;
+    if (r.syncStatus === 'pending' || unsynced > 0) pendingReports++;
+  });
+
+  if (!serverOnline) {
+    if (pendingReports > 0 || pendingPhotos > 0) setSyncState('warning', `离线 · 待同步${pendingReports}份/${pendingPhotos}张`);
+    else setSyncState('offline', '离线');
+    return;
+  }
+
+  if (APP.syncInProgress) return;
+  if (pendingReports > 0 || pendingPhotos > 0) setSyncState('warning', `待同步${pendingReports}份/${pendingPhotos}张`);
+  else setSyncState('online', '已同步 (云端)');
+}
+
+async function uploadReportToCloud(report, context = 'manual') {
+  const unsyncedSlots = getUnsyncedPhotoSlots(report);
+  const total = unsyncedSlots.length;
+  let done = 0;
+  let failed = 0;
+  let lastError = '';
+
+  setUploadStatus(report, { state: 'uploading', total, done, failed, message: total > 0 ? `上传中 0/${total}` : '上传中', lastError: '' });
+  report.syncStatus = 'pending';
+  await safeLocalSave(report, 'upload-start');
+
+  try {
+    // Build cloud payload WITHOUT cloning base64 photos (saves ~5MB memory per report)
+    const { photos, _uploadedPhotoSlots, _deletedPhotoSlots, uploadStatus, ...reportFields } = report;
+    const cloudReport = JSON.parse(JSON.stringify(reportFields));
+    cloudReport.photos = {};
+    await apiFetchWithRetry('/reports', { method: 'POST', body: JSON.stringify(cloudReport), timeoutMs: 18000 }, { retries: 2 });
+  } catch (e) {
+    if (e.message === 'TOKEN_EXPIRED') throw e;
+    lastError = e.message || '报告上传失败';
+    setUploadStatus(report, { state: 'pending', total, done, failed: total, message: '网络异常，等待自动重试', lastError });
+    report.syncStatus = 'pending';
+    await safeLocalSave(report, 'upload-report-failed');
+    return { ok: false, total, done, failed: total, lastError };
+  }
+
+  for (const slotIdx of unsyncedSlots) {
+    try {
+      await apiFetchWithRetry('/photos', {
+        method: 'POST',
+        body: JSON.stringify({
+          reportId: report.id,
+          slotIndex: parseInt(slotIdx, 10),
+          dataUrl: report.photos[slotIdx]
+        }),
+        timeoutMs: 30000
+      }, { retries: 2, baseDelayMs: 1200 });
+      if (!report._uploadedPhotoSlots) report._uploadedPhotoSlots = {};
+      report._uploadedPhotoSlots[slotIdx] = true;
+      done++;
+    } catch (e) {
+      failed++;
+      lastError = e.message || '照片上传失败';
+    }
+    setUploadStatus(report, {
+      state: failed > 0 ? 'uploading' : 'uploading',
+      total,
+      done,
+      failed,
+      message: total > 0 ? `上传中 ${done}/${total}` : '上传中',
+      lastError
+    });
+    await safeLocalSave(report, 'upload-photo-progress');
+  }
+
+  let deletionFailedCount = 0;
+  // Sync photo deletions — only clear successfully deleted slots
+  if (report._deletedPhotoSlots && report._deletedPhotoSlots.length > 0) {
+    const failedDeletions = [];
+    for (const slot of report._deletedPhotoSlots) {
+      try {
+        await apiFetchWithRetry(`/photos?reportId=${report.id}&slot=${slot}`, { method: 'DELETE', timeoutMs: 12000 }, { retries: 1 });
+      } catch (e) {
+        lastError = e.message || '删除云端照片失败';
+        deletionFailedCount++;
+        failedDeletions.push(slot);
+      }
+    }
+    report._deletedPhotoSlots = failedDeletions.length > 0 ? failedDeletions : undefined;
+    if (!report._deletedPhotoSlots) delete report._deletedPhotoSlots;
+  }
+
+  if (failed > 0 || deletionFailedCount > 0) {
+    report.syncStatus = 'pending';
+    setUploadStatus(report, {
+      state: 'pending',
+      total,
+      done,
+      failed: failed + deletionFailedCount,
+      message: deletionFailedCount > 0
+        ? `待重试 ${failed} 张上传，${deletionFailedCount} 张删除`
+        : `待重试 ${failed} 张`,
+      lastError
+    });
+  } else {
+    report.syncStatus = 'synced';
+    setUploadStatus(report, {
+      state: 'synced',
+      total,
+      done,
+      failed: 0,
+      message: total > 0 ? `已同步 ${done}/${total} 张` : '已同步',
+      lastError: ''
+    });
+  }
+
+  report.updatedAt = new Date().toISOString();
+  await safeLocalSave(report, 'upload-finish');
+  const totalFailed = failed + deletionFailedCount;
+  return {
+    ok: totalFailed === 0,
+    total,
+    done,
+    failed: totalFailed,
+    photoFailed: failed,
+    deletionFailed: deletionFailedCount,
+    lastError,
+    context
+  };
 }
 
 async function syncReports() {
@@ -274,38 +574,98 @@ async function syncReports() {
       const localMap = {};
       localReports.forEach(r => { localMap[r.id] = r; });
 
-      // Merge: cloud data + preserve local photos
-      for (const cr of cloudReports) {
+      // Merge: cloud data + local data (local pending changes take priority)
+      for (let i = 0; i < cloudReports.length; i++) {
+        const cr = cloudReports[i];
         const local = localMap[cr.id];
         if (!cr.photos) cr.photos = {};
+        if (!cr._uploadedPhotoSlots) cr._uploadedPhotoSlots = {};
 
-        // Step 1: Preserve all local photos (highest priority — never lose local data)
-        if (local && local.photos) {
-          Object.keys(local.photos).forEach(k => {
-            if (local.photos[k] && local.photos[k] !== '__HAS_PHOTO__') {
-              cr.photos[k] = local.photos[k];
+        const localHasPendingChanges = !!local && (
+          local.syncStatus === 'pending' ||
+          getUnsyncedPhotoSlots(local).length > 0 ||
+          (local._deletedPhotoSlots && local._deletedPhotoSlots.length > 0)
+        );
+
+        // Critical: if local has pending edits, never overwrite it with cloud snapshot.
+        if (localHasPendingChanges) {
+          const merged = JSON.parse(JSON.stringify(local));
+          if (!merged.photos) merged.photos = {};
+          if (!merged._uploadedPhotoSlots) merged._uploadedPhotoSlots = {};
+
+          // Preserve cloud photo existence for slots local doesn't currently have.
+          Object.keys(cr.photos || {}).forEach(k => {
+            if (!isRealPhotoDataUrl(merged.photos[k]) && isPhotoPlaceholder(cr.photos[k])) {
+              merged.photos[k] = '__CLOUD_PHOTO__';
+              merged._uploadedPhotoSlots[k] = true;
             }
           });
+
+          merged.syncStatus = 'pending';
+          if (!merged.uploadStatus || merged.uploadStatus.state === 'idle' || merged.uploadStatus.state === 'synced') {
+            merged.uploadStatus = {
+              state: 'pending',
+              total: getUnsyncedPhotoSlots(merged).length,
+              done: 0,
+              failed: 0,
+              message: '本地有未同步变更，待上传',
+              lastError: '',
+              updatedAt: new Date().toISOString()
+            };
+          }
+
+          cloudReports[i] = merged;
+          await safeLocalSave(merged, 'sync-merge-pending');
+          continue;
+        }
+
+        // Step 1: Preserve local photos that haven't been uploaded yet
+        // Only keep local base64 photos that are NOT yet confirmed in cloud
+        // This prevents overwriting newer cloud photos from other devices
+        if (local && local.photos) {
+          Object.keys(local.photos).forEach(k => {
+            if (isRealPhotoDataUrl(local.photos[k])) {
+              // Only preserve if this photo hasn't been uploaded to cloud yet
+              const alreadyUploaded = local._uploadedPhotoSlots && local._uploadedPhotoSlots[k];
+              if (!alreadyUploaded) {
+                // Unsynced local photo — must keep it or it'll be lost
+                cr.photos[k] = local.photos[k];
+              } else if (!cr.photos[k] || isPhotoPlaceholder(cr.photos[k])) {
+                // Already uploaded but cloud only has placeholder — keep local copy for display
+                cr.photos[k] = local.photos[k];
+              }
+              // If cloud has __HAS_PHOTO__ and local has data that was already uploaded,
+              // we let the placeholder remain — lazy-load will fetch when needed
+            }
+          });
+        }
+        if (local && local._uploadedPhotoSlots) {
+          cr._uploadedPhotoSlots = { ...local._uploadedPhotoSlots };
+        }
+        if (local && local.uploadStatus) {
+          cr.uploadStatus = { ...local.uploadStatus };
         }
 
         // Step 2: For cloud photos that are placeholders and we don't have locally,
         // try to fetch from the new photos API (enables cross-device sync)
-        const missingSlots = Object.keys(cr.photos).filter(k => cr.photos[k] === '__HAS_PHOTO__');
+        const missingSlots = Object.keys(cr.photos).filter(k => isPhotoPlaceholder(cr.photos[k]));
         if (missingSlots.length > 0) {
           // Lazy-load: fetch individual photos on demand, not during sync
           // Mark them so the UI can trigger lazy loading
           missingSlots.forEach(k => {
             cr.photos[k] = '__CLOUD_PHOTO__'; // distinguishable from local placeholder
+            cr._uploadedPhotoSlots[k] = true; // cloud has this photo
           });
         }
 
-        cr.syncStatus = 'synced';
-        await localSave(cr);
+        cr.syncStatus = getUnsyncedPhotoSlots(cr).length > 0 ? 'pending' : 'synced';
+        cloudReports[i] = cr;
+        await safeLocalSave(cr, 'sync-merge-cloud');
       }
 
       // Also keep local-only reports (not yet synced)
       for (const lr of localReports) {
-        if (!cloudReports.find(cr => cr.id === lr.id) && lr.syncStatus === 'pending') {
+        if (!cloudReports.find(cr => cr.id === lr.id) && (lr.syncStatus === 'pending' || getUnsyncedPhotoSlots(lr).length > 0)) {
           cloudReports.push(lr);
         }
       }
@@ -320,6 +680,7 @@ async function syncReports() {
   } else {
     APP.reports = await localGetAll();
   }
+  await refreshSyncStateFromLocal();
 }
 
 /**
@@ -328,22 +689,26 @@ async function syncReports() {
 async function fetchCloudPhoto(reportId, slotIndex, retries = 2) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await apiFetch(`/photos?reportId=${reportId}&slot=${slotIndex}`);
-      if (result && result.dataUrl && result.dataUrl.startsWith('data:')) {
-        // Save to current report and local DB
+      const result = await apiFetch(`/photos?reportId=${reportId}&slot=${slotIndex}`, { timeoutMs: 30000 });
+      if (result && isRealPhotoDataUrl(result.dataUrl)) {
+        // Update all in-memory references, then save once to IndexedDB
         if (APP.currentReport && APP.currentReport.id === reportId) {
           APP.currentReport.photos[slotIndex] = result.dataUrl;
-          await localSave(APP.currentReport);
+          if (!APP.currentReport._uploadedPhotoSlots) APP.currentReport._uploadedPhotoSlots = {};
+          APP.currentReport._uploadedPhotoSlots[slotIndex] = true;
         }
-        // Also update in reports array
-        const report = APP.reports.find(r => r.id === reportId);
-        if (report) {
-          report.photos[slotIndex] = result.dataUrl;
-          await localSave(report);
+        const listReport = APP.reports.find(r => r.id === reportId);
+        if (listReport) {
+          listReport.photos[slotIndex] = result.dataUrl;
+          if (!listReport._uploadedPhotoSlots) listReport._uploadedPhotoSlots = {};
+          listReport._uploadedPhotoSlots[slotIndex] = true;
         }
+        // Single save — prefer currentReport (most up-to-date), fallback to list copy
+        const toSave = (APP.currentReport && APP.currentReport.id === reportId)
+          ? APP.currentReport : listReport;
+        if (toSave) await safeLocalSave(toSave, 'fetch-cloud-photo');
         return result.dataUrl;
       }
-      // 如果返回的不是有效图片数据，不要重试
       if (result && result.dataUrl === null) return null;
     } catch (e) {
       console.warn(`Failed to fetch photo ${slotIndex} for ${reportId} (attempt ${attempt + 1}):`, e.message);
@@ -363,9 +728,18 @@ async function loadCloudPhoto(reportId, slotIndex) {
   }
   const dataUrl = await fetchCloudPhoto(reportId, slotIndex);
   if (dataUrl && slot) {
-    slot.innerHTML = `<img src="${dataUrl}"><button class="delete-photo" onclick="event.stopPropagation();delPhoto(${slotIndex})">✕</button><div class="label">${PHOTO_SLOTS[slotIndex] || ''}</div>`;
+    const activeReport = APP.currentReport && APP.currentReport.id === reportId ? APP.currentReport : null;
+    const isReadOnly = !!(activeReport && ((APP.user && APP.user.role === 'supervisor') || activeReport.status === 'approved'));
+    const deleteBtn = !isReadOnly ? `<button class="delete-photo" onclick="event.stopPropagation();delPhoto(${slotIndex})">✕</button>` : '';
+    slot.innerHTML = `<img src="${dataUrl}">${deleteBtn}<div class="label">${PHOTO_SLOTS[slotIndex] || ''}</div>`;
     slot.classList.remove('cloud-pending');
-    slot.setAttribute('onclick', `openPhotoMenu(${slotIndex})`);
+    if (isReadOnly) {
+      slot.removeAttribute('onclick');
+      slot.style.cursor = 'default';
+    } else {
+      slot.setAttribute('onclick', `openPhotoMenu(${slotIndex})`);
+      slot.style.cursor = 'pointer';
+    }
   } else if (slot) {
     slot.innerHTML = '<div class="icon" style="color:#e74c3c">⚠</div><div style="font-size:.6rem;color:#e74c3c">加载失败</div><div class="label">' + (PHOTO_SLOTS[slotIndex] || '') + '</div>';
   }
@@ -373,141 +747,197 @@ async function loadCloudPhoto(reportId, slotIndex) {
 
 async function saveReport(report) {
   report.updatedAt = new Date().toISOString();
-  await localSave(report);
-  if (serverOnline) {
-    try {
-      // Clone report and ALWAYS strip photos from the main payload
-      // Photos are uploaded separately via /api/photos endpoint
-      const cloudReport = JSON.parse(JSON.stringify(report));
-      const photosToSync = cloudReport.photos || {};
-      cloudReport.photos = {}; // Always strip photos from report JSON
-
-      await apiFetch('/reports', { method: 'POST', body: JSON.stringify(cloudReport) });
-
-      // Upload photos individually (each within Netlify's body limit)
-      let photoErrors = 0;
-      const photoKeys = Object.keys(photosToSync).filter(k =>
-        photosToSync[k] &&
-        photosToSync[k] !== '__HAS_PHOTO__' &&
-        photosToSync[k] !== '__CLOUD_PHOTO__' &&
-        photosToSync[k].startsWith('data:')  // 只上传真正的base64数据
-      );
-      for (const slotIdx of photoKeys) {
-        try {
-          await apiFetch('/photos', {
-            method: 'POST',
-            body: JSON.stringify({
-              reportId: report.id,
-              slotIndex: parseInt(slotIdx),
-              dataUrl: photosToSync[slotIdx]
-            })
-          });
-        } catch (photoErr) {
-          console.warn(`Photo ${slotIdx} upload failed:`, photoErr.message);
-          photoErrors++;
-        }
-      }
-      if (photoErrors > 0) {
-        showToast(`${photoErrors}张照片上传失败，将在下次自动重试`, 'warning');
-      }
-
-      // Sync photo deletions to cloud
-      if (report._deletedPhotoSlots && report._deletedPhotoSlots.length > 0) {
-        for (const slot of report._deletedPhotoSlots) {
-          try {
-            await apiFetch(`/photos?reportId=${report.id}&slot=${slot}`, { method: 'DELETE' });
-          } catch (delErr) {
-            console.warn(`Photo ${slot} cloud delete failed:`, delErr.message);
-          }
-        }
-        delete report._deletedPhotoSlots;
-      }
-
-      // 只有所有照片都上传成功才标记为synced
-      report.syncStatus = photoErrors > 0 ? 'pending' : 'synced';
-      await localSave(report);
-    } catch (e) {
-      if (e.message === 'TOKEN_EXPIRED') return;
-      console.warn('Cloud save failed:', e.message);
-      report.syncStatus = 'pending';
-      await localSave(report);
-      showToast('云端保存失败，已保存到本地', 'warning');
-    }
-  } else {
+  if (!report._uploadedPhotoSlots) report._uploadedPhotoSlots = {};
+  await safeLocalSave(report, 'save-report-start');
+  if (!serverOnline) {
     report.syncStatus = 'pending';
-    await localSave(report);
+    setUploadStatus(report, { state: 'pending', message: '离线保存，待自动上传', lastError: '' });
+    await safeLocalSave(report, 'save-report-offline');
+    await refreshSyncStateFromLocal();
+    return;
+  }
+
+  try {
+    setSyncState('uploading', '正在上传当前报告...');
+    const result = await uploadReportToCloud(report, 'save');
+    if (!result.ok) showToast('部分内容上传失败，已进入自动重试队列', 'warning');
+    await refreshSyncStateFromLocal();
+  } catch (e) {
+    if (e.message === 'TOKEN_EXPIRED') return;
+    console.warn('Cloud save failed:', e.message);
+    report.syncStatus = 'pending';
+    setUploadStatus(report, { state: 'pending', message: '上传失败，等待自动重试', lastError: e.message || '未知错误' });
+    await safeLocalSave(report, 'save-report-cloud-failed');
+    await refreshSyncStateFromLocal();
+    showToast('云端保存失败，已保存到本地', 'warning');
   }
 }
 
 async function syncPendingReports() {
+  if (!serverOnline || APP.syncInProgress || !APP.user || !APP.token) return;
   const local = await localGetAll();
-  const pending = local.filter(r => r.syncStatus === 'pending');
-  let synced = 0;
-  for (const r of pending) {
-    try {
-      const cloudReport = JSON.parse(JSON.stringify(r));
-      const photosToSync = cloudReport.photos || {};
-      cloudReport.photos = {}; // Strip photos, upload separately
-      await apiFetch('/reports', { method: 'POST', body: JSON.stringify(cloudReport) });
+  const pending = local.filter(r => r.syncStatus === 'pending' || getUnsyncedPhotoSlots(r).length > 0);
+  if (pending.length === 0) {
+    await refreshSyncStateFromLocal();
+    return;
+  }
 
-      // Upload photos individually
-      const photoKeys = Object.keys(photosToSync).filter(k =>
-        photosToSync[k] &&
-        photosToSync[k] !== '__HAS_PHOTO__' &&
-        photosToSync[k] !== '__CLOUD_PHOTO__' &&
-        photosToSync[k].startsWith('data:')  // 只上传真正的base64数据
-      );
-      for (const slotIdx of photoKeys) {
-        try {
-          await apiFetch('/photos', {
-            method: 'POST',
-            body: JSON.stringify({
-              reportId: r.id,
-              slotIndex: parseInt(slotIdx),
-              dataUrl: photosToSync[slotIdx]
-            })
-          });
-        } catch (photoErr) {
-          console.warn(`Photo ${slotIdx} sync failed for ${r.id}:`, photoErr.message);
+  APP.syncInProgress = true;
+  let synced = 0;
+  let failed = 0;
+  let authExpired = false;
+  try {
+    setSyncState('uploading', `后台同步 0/${pending.length} 份报告...`);
+    for (let i = 0; i < pending.length; i++) {
+      const r = pending[i];
+      setSyncState('uploading', `后台同步 ${i + 1}/${pending.length}：${r.poOrderNo || r.id}`);
+      try {
+        const result = await uploadReportToCloud(r, 'background');
+        if (result.ok) synced++;
+        else failed++;
+      } catch (e) {
+        if (e.message === 'TOKEN_EXPIRED') {
+          authExpired = true;
+          break;
+        }
+        failed++;
+        setUploadStatus(r, { state: 'pending', message: '同步失败，等待重试', lastError: e.message || '未知错误' });
+        r.syncStatus = 'pending';
+        await safeLocalSave(r, 'sync-pending-failed');
+      }
+    }
+  } finally {
+    APP.syncInProgress = false;
+  }
+
+  if (authExpired) return;
+  // Refresh APP.reports from IndexedDB to reflect sync results
+  APP.reports = await localGetAll();
+  await refreshSyncStateFromLocal();
+  if (synced > 0) showToast(`已同步 ${synced} 份报告`, 'success');
+  if (failed > 0) showToast(`${failed} 份报告同步失败，将自动重试`, 'warning');
+}
+
+async function retryFailedPhotos() {
+  if (!serverOnline || APP.syncInProgress || !APP.user || !APP.token) return;
+  const allReports = await localGetAll();
+  const needRetry = allReports.filter(r => getUnsyncedPhotoSlots(r).length > 0);
+  if (needRetry.length === 0) return;
+
+  APP.syncInProgress = true;
+  let fixed = 0;
+  let authExpired = false;
+  try {
+    setSyncState('uploading', `补传照片中 0/${needRetry.length}...`);
+    for (let i = 0; i < needRetry.length; i++) {
+      const report = needRetry[i];
+      setSyncState('uploading', `补传照片 ${i + 1}/${needRetry.length}`);
+      try {
+        const result = await uploadReportToCloud(report, 'photo-retry');
+        if (result.ok) fixed++;
+      } catch (e) {
+        if (e.message === 'TOKEN_EXPIRED') {
+          authExpired = true;
+          break;
         }
       }
+    }
+  } finally {
+    APP.syncInProgress = false;
+  }
+  if (authExpired) return;
+  await refreshSyncStateFromLocal();
+  if (fixed > 0) showToast(`已完成 ${fixed} 份报告补传`, 'success');
+}
 
-      r.syncStatus = 'synced';
-      await localSave(r);
-      synced++;
+// Unified background sync loop — single timer eliminates race conditions
+// Runs every 90s: first syncs pending reports, then retries failed photos
+APP._syncTimerId = setInterval(async () => {
+  if (!serverOnline || APP.syncInProgress || !APP.user || !APP.token) return;
+  try {
+    await syncPendingReports();
+  } catch (e) {
+    setSyncState('error', '自动同步失败，将继续重试');
+  }
+  // After sync completes, retry any remaining failed photos
+  if (!APP.syncInProgress) {
+    try {
+      await retryFailedPhotos();
     } catch (e) {
-      if (e.message === 'TOKEN_EXPIRED') return;
-      console.warn('Sync failed for', r.id, e.message);
+      setSyncState('error', '照片补传失败，将继续重试');
     }
   }
-  if (synced > 0) showToast(`已同步 ${synced} 份报告`, 'success');
-  if (synced < pending.length) {
-    showToast(`${pending.length - synced} 份报告同步失败`, 'warning');
-  }
-}
+}, 90 * 1000);
 
 // ===== INIT =====
 async function init() {
   try { await openDB(); } catch (e) { console.warn('IndexedDB failed:', e); }
+
+  // Request persistent storage to prevent browser from evicting our data
+  if (navigator.storage && navigator.storage.persist) {
+    try {
+      const granted = await navigator.storage.persist();
+      if (granted) {
+        console.log('Persistent storage granted - photos will not be auto-evicted');
+      } else {
+        console.warn('Persistent storage denied - photos may be evicted under storage pressure');
+      }
+    } catch (e) { console.warn('Storage persist request failed:', e); }
+  }
+
   await checkServer();
   APP.reports = await localGetAll();
+  await refreshSyncStateFromLocal();
 }
 init();
 
 // ===== ONLINE/OFFLINE LISTENERS =====
 window.addEventListener('online', async () => {
   serverOnline = true;
-  updateSyncUI();
+  if (!APP.user || !APP.token) {
+    setSyncState('online', '网络已恢复，请先登录');
+    return;
+  }
+  setSyncState('online', '网络已恢复，准备同步...');
   showToast('网络已恢复，正在同步...', 'info');
-  await syncPendingReports();
+  try {
+    // Step 1: Pull cloud changes first (other device may have edited)
+    await syncReports();
+    // Step 2: Push local pending changes
+    await syncPendingReports();
+    // Step 3: Retry any remaining failed photos
+    await retryFailedPhotos();
+  } finally {
+    await refreshSyncStateFromLocal();
+  }
 });
 
 window.addEventListener('offline', () => {
   serverOnline = false;
-  updateSyncUI();
+  setSyncState('offline', '离线');
   showToast('已切换到离线模式', 'warning');
 });
 
+
+// ===== CRITICAL: Flush pending saves before page unload =====
+function flushPendingSave() {
+  debouncedAutoSave.cancel(); // Cancel pending debounce — we're saving now
+  if (APP.currentReport) {
+    try {
+      if (APP.db) {
+        const tx = APP.db.transaction('reports', 'readwrite');
+        tx.objectStore('reports').put(JSON.parse(JSON.stringify(APP.currentReport)));
+      }
+    } catch (e) {
+      console.warn('Emergency save failed:', e);
+    }
+  }
+}
+window.addEventListener('beforeunload', flushPendingSave);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && APP.currentReport) flushPendingSave();
+});
+window.addEventListener('pagehide', flushPendingSave);
 // ===== LOGIN =====
 async function doLogin() {
   const username = document.getElementById('loginUser').value.trim();
@@ -548,6 +978,17 @@ async function doLogin() {
   }
 
   await syncReports();
+  await refreshSyncStateFromLocal();
+  // Restart background sync timer if it was cleared on logout
+  if (!APP._syncTimerId) {
+    APP._syncTimerId = setInterval(async () => {
+      if (!serverOnline || APP.syncInProgress) return;
+      try { await syncPendingReports(); } catch (e) { setSyncState('error', '自动同步失败，将继续重试'); }
+      if (!APP.syncInProgress) {
+        try { await retryFailedPhotos(); } catch (e) { setSyncState('error', '照片补传失败，将继续重试'); }
+      }
+    }, 90 * 1000);
+  }
   document.getElementById('loginPage').classList.remove('active');
   document.getElementById('mainApp').classList.add('active');
   document.getElementById('userBadge').textContent = APP.user.name;
@@ -556,9 +997,15 @@ async function doLogin() {
 }
 
 function logout() {
+  // Flush any pending data before clearing state
+  debouncedAutoSave.cancel();
+  flushPendingSave();
+  // Clear background sync timer
+  if (APP._syncTimerId) { clearInterval(APP._syncTimerId); APP._syncTimerId = null; }
   APP.user = null;
   APP.token = null;
   APP.currentReport = null;
+  APP.syncInProgress = false;
   try { localStorage.removeItem('senia_jwt'); } catch (e) {}
   document.getElementById('mainApp').classList.remove('active');
   document.getElementById('loginPage').classList.add('active');
@@ -598,7 +1045,7 @@ function createEmptyReport() {
     },
     inspectItems: {}, inspectRemarks: {},
     packaging: { pcsPerBox: 12, layersPerBox: 1, boxesPerPallet: 5, layersPerPallet: 10, manualsPerBox: 0 },
-    boxWeightKg: '', palletWeightKg: '', finalResult: 'pass', photos: {},
+    boxWeightKg: '', palletWeightKg: '', finalResult: 'pass', photos: {}, _uploadedPhotoSlots: {},
     inspector: APP.user ? APP.user.name : '', reviewer: '',
     status: 'draft', createdAt: now.toISOString(), updatedAt: now.toISOString(),
     createdBy: APP.user ? APP.user.username : ''
@@ -612,9 +1059,14 @@ function startNewReport() {
 }
 
 async function editReport(id) {
+  debouncedAutoSave.cancel(); // Cancel any pending save from previous report
   const r = APP.reports.find(r => r.id === id);
-  if (!r) return;
+  if (!r) { showToast('报告未找到', 'error'); return; }
   APP.currentReport = JSON.parse(JSON.stringify(r));
+  // Ensure critical properties exist (protect against old reports)
+  if (!APP.currentReport.photos) APP.currentReport.photos = {};
+  if (!APP.currentReport.dimensions) APP.currentReport.dimensions = {};
+  if (!APP.currentReport._uploadedPhotoSlots) APP.currentReport._uploadedPhotoSlots = {};
   // Migrate old 10-element arrays to 6
   ['length', 'width', 'thickness', 'gloss'].forEach(k => {
     if (APP.currentReport.dimensions[k] && APP.currentReport.dimensions[k].length > 6) {
@@ -721,12 +1173,70 @@ function showStep(n, btn) {
   if (el) el.style.display = 'block';
 }
 
+function onPhotoSlotClick(slotIndex, cloudPending) {
+  if (cloudPending) {
+    const reportId = APP.currentReport && APP.currentReport.id;
+    if (reportId) loadCloudPhoto(reportId, slotIndex);
+    return;
+  }
+  openPhotoMenu(slotIndex);
+}
+
+function getReportUploadMeta(report) {
+  const us = report?.uploadStatus || {};
+  const unsynced = getUnsyncedPhotoSlots(report).length;
+
+  if (us.state === 'uploading') {
+    return {
+      text: us.message || (us.total > 0 ? `上传中 ${us.done || 0}/${us.total}` : '上传中...'),
+      className: 'upload-status-uploading'
+    };
+  }
+
+  if (report?.syncStatus === 'pending' || unsynced > 0 || us.state === 'pending') {
+    const fallback = unsynced > 0 ? `待上传 ${unsynced} 张照片` : '待同步';
+    return {
+      text: us.message || fallback,
+      className: 'upload-status-pending'
+    };
+  }
+
+  if (report?.syncStatus === 'synced' || us.state === 'synced') {
+    return {
+      text: us.message || '云端已同步',
+      className: 'upload-status-synced'
+    };
+  }
+
+  if (us.lastError) {
+    return {
+      text: `上传异常：${us.lastError}`,
+      className: 'upload-status-error'
+    };
+  }
+
+  return {
+    text: serverOnline ? '云端连接正常' : '离线模式',
+    className: 'upload-status-idle'
+  };
+}
+
+function refreshCurrentReportUploadStatusUI() {
+  if (!APP.currentReport) return;
+  const el = document.querySelector('#reportForm .upload-status');
+  if (!el) return;
+  const meta = getReportUploadMeta(APP.currentReport);
+  el.className = `upload-status ${meta.className}`;
+  el.textContent = meta.text;
+}
+
 // ===== RENDER FORM =====
 function renderReportForm() {
   const r = APP.currentReport;
   const isReadOnly = APP.user.role === 'supervisor' || r.status === 'approved';
   const ro = isReadOnly ? 'readonly' : '';
   const dis = isReadOnly ? 'disabled' : '';
+  const uploadMeta = getReportUploadMeta(r);
 
   document.getElementById('headerTitle').textContent = r.status === 'draft' ? '编辑报告 Edit' : '查看报告 View';
 
@@ -842,9 +1352,9 @@ function renderReportForm() {
     <div class="card"><div class="card-header">📷 照片 Photos</div><div class="card-body">
       <div class="photo-grid">${PHOTO_SLOTS.map((lbl, i) => {
         const img = r.photos[i];
-        const isCloudPending = img === '__CLOUD_PHOTO__' || img === '__HAS_PHOTO__';
-        const hasRealPhoto = img && !isCloudPending;
-        return `<div class="photo-slot ${isCloudPending ? 'cloud-pending' : ''}" onclick="${isCloudPending ? `loadCloudPhoto('${r.id}',${i})` : `openPhotoMenu(${i})`}" style="cursor:${dis && !isCloudPending ? 'default' : 'pointer'}" id="photo-slot-${i}">
+        const isCloudPending = isPhotoPlaceholder(img);
+        const hasRealPhoto = isRealPhotoDataUrl(img);
+        return `<div class="photo-slot ${isCloudPending ? 'cloud-pending' : ''}" onclick="onPhotoSlotClick(${i},${isCloudPending ? 'true' : 'false'})" style="cursor:${dis && !isCloudPending ? 'default' : 'pointer'}" id="photo-slot-${i}">
         ${hasRealPhoto ? `<img src="${img}">` : isCloudPending ? '<div class="icon" style="color:#3498db">⏳</div><div style="font-size:.6rem;color:#3498db">点击加载</div>' : '<div class="icon">📷</div>'}
         ${!dis && hasRealPhoto ? `<button class="delete-photo" onclick="event.stopPropagation();delPhoto(${i})">✕</button>` : ''}
         <div class="label">${lbl}</div>
@@ -860,18 +1370,19 @@ function renderReportForm() {
     </div></div>
   </div>
 
-  <div class="card" style="margin-bottom:80px"><div class="card-body">
-    <div class="form-button-row ${isReadOnly ? 'full' : ''}">
-      ${!isReadOnly ? `<button class="btn btn-primary" onclick="saveDraft()">💾 保存草稿</button>` : ''}
-      ${r.status === 'draft' ? `<button class="btn btn-success" onclick="submitReport()">📤 提交审核</button>` : ''}
-      ${r.status === 'submitted' && APP.user.role === 'supervisor' ? `<button class="btn btn-success" onclick="approveReport()">✅ 通过</button>` : ''}
-      ${r.status === 'submitted' && APP.user.role === 'supervisor' ? `<button class="btn btn-danger" onclick="rejectReport()">❌ 驳回</button>` : ''}
-    </div>
-    <div class="form-button-row" style="margin-top:8px">
-      <button class="btn btn-pdf" onclick="generatePDF()">📄 生成PDF</button>
-      ${!isReadOnly ? `<button class="btn btn-danger" onclick="trashReport()">🗑 删除</button>` : ''}
-    </div>
-  </div></div>
+    <div class="card" style="margin-bottom:80px"><div class="card-body">
+      <div class="form-button-row ${isReadOnly ? 'full' : ''}">
+        ${!isReadOnly ? `<button class="btn btn-primary" onclick="saveDraft()">💾 保存草稿</button>` : ''}
+        ${r.status === 'draft' ? `<button class="btn btn-success" onclick="submitReport()">📤 提交审核</button>` : ''}
+        ${r.status === 'submitted' && APP.user.role === 'supervisor' ? `<button class="btn btn-success" onclick="approveReport()">✅ 通过</button>` : ''}
+        ${r.status === 'submitted' && APP.user.role === 'supervisor' ? `<button class="btn btn-danger" onclick="rejectReport()">❌ 驳回</button>` : ''}
+      </div>
+      <div class="form-button-row" style="margin-top:8px">
+        <button class="btn btn-pdf" onclick="generatePDF()">📄 生成PDF</button>
+        ${!isReadOnly ? `<button class="btn btn-danger" onclick="trashReport()">🗑 删除</button>` : ''}
+      </div>
+      <div class="upload-status ${uploadMeta.className}" style="margin-top:8px">${escapeHtml(uploadMeta.text)}</div>
+    </div></div>
   `;
 
   document.getElementById('formContent').innerHTML = html;
@@ -954,7 +1465,14 @@ async function handlePhoto(e) {
   try {
     const dataUrl = await compressImage(file);
     APP.currentReport.photos[APP.editingPhotoSlot] = dataUrl;
-    debouncedAutoSave(); // Auto-save to IndexedDB immediately
+    if (!APP.currentReport._uploadedPhotoSlots) APP.currentReport._uploadedPhotoSlots = {};
+    APP.currentReport._uploadedPhotoSlots[APP.editingPhotoSlot] = false;
+    APP.currentReport.syncStatus = 'pending';
+    setUploadStatus(APP.currentReport, { state: 'pending', message: '照片已更新，待上传', lastError: '' });
+    // CRITICAL: Save photos IMMEDIATELY (not debounced) to prevent data loss
+    await localSave(APP.currentReport);
+    await refreshSyncStateFromLocal();
+    console.log(`Photo slot ${APP.editingPhotoSlot} saved to IndexedDB immediately`);
 
     renderReportForm();
     showStep(3, document.querySelectorAll('.tabs button')[3]);
@@ -970,16 +1488,21 @@ document.getElementById('photoGallery').addEventListener('change', handlePhoto);
 
 function delPhoto(i) {
   delete APP.currentReport.photos[i];
+  if (!APP.currentReport._uploadedPhotoSlots) APP.currentReport._uploadedPhotoSlots = {};
+  delete APP.currentReport._uploadedPhotoSlots[i];
+  APP.currentReport.syncStatus = 'pending';
+  setUploadStatus(APP.currentReport, { state: 'pending', message: '照片删除待同步', lastError: '' });
   // Track deleted photo slots for cloud sync
   if (!APP.currentReport._deletedPhotoSlots) APP.currentReport._deletedPhotoSlots = [];
   if (!APP.currentReport._deletedPhotoSlots.includes(i)) APP.currentReport._deletedPhotoSlots.push(i);
-  debouncedAutoSave();
+  safeLocalSave(APP.currentReport, 'delete-photo').then(() => refreshSyncStateFromLocal()); // Save immediately, not debounced
   renderReportForm();
   showStep(3, document.querySelectorAll('.tabs button')[3]);
 }
 
 // ===== SAVE / SUBMIT / APPROVE =====
 async function saveDraft() {
+  debouncedAutoSave.cancel(); // Cancel pending debounce to prevent overwrite
   const r = APP.currentReport;
   r.status = 'draft';
   await saveReport(r);
@@ -988,6 +1511,7 @@ async function saveDraft() {
 }
 
 async function submitReport() {
+  debouncedAutoSave.cancel();
   const r = APP.currentReport;
   if (!r.poOrderNo?.trim()) { showToast('请填写PO订单号', 'error'); return; }
   if (!r.colorFilmModel?.trim()) { showToast('请填写彩膜型号', 'error'); return; }
@@ -1000,6 +1524,7 @@ async function submitReport() {
 }
 
 async function approveReport() {
+  debouncedAutoSave.cancel();
   const r = APP.currentReport;
   r.status = 'approved';
   r.reviewer = APP.user.name;
@@ -1073,12 +1598,27 @@ function renderTrash() {
   document.getElementById('mainContent').innerHTML = `<div id="trashList">${trashed.map(r => `
     <div class="report-item" style="opacity:0.8">
       <div style="width:40px;height:40px;background:#f0f0f0;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem">🗑</div>
-      <div class="report-info"><h3>PO: ${escapeHtml(r.poOrderNo || '--')} ${escapeHtml(r.colorFilmModel || '')}</h3><p>${r.date} · ${r.inspector || ''}</p></div>
+      <div class="report-info"><h3>PO: ${escapeHtml(r.poOrderNo || '--')} ${escapeHtml(r.colorFilmModel || '')}</h3><p>${escapeHtml(r.date || '')} · ${escapeHtml(r.inspector || '')}</p></div>
       <div style="display:flex;gap:4px;flex-direction:column">
-        <button class="btn btn-sm btn-outline" style="padding:4px 8px;font-size:.7rem" onclick="event.stopPropagation();restoreReport('${r.id}')">恢复</button>
-        <button class="btn btn-sm btn-danger" style="padding:4px 8px;font-size:.7rem" onclick="event.stopPropagation();permanentDelete('${r.id}')">永删</button>
+        <button class="btn btn-sm btn-outline trash-restore-btn" data-report-id="${escapeHtml(r.id)}" style="padding:4px 8px;font-size:.7rem">恢复</button>
+        <button class="btn btn-sm btn-danger trash-delete-btn" data-report-id="${escapeHtml(r.id)}" style="padding:4px 8px;font-size:.7rem">永删</button>
       </div>
     </div>`).join('')}</div>`;
+
+  document.querySelectorAll('#trashList .trash-restore-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const reportId = btn.getAttribute('data-report-id');
+      if (reportId) restoreReport(reportId);
+    });
+  });
+  document.querySelectorAll('#trashList .trash-delete-btn').forEach(btn => {
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const reportId = btn.getAttribute('data-report-id');
+      if (reportId) permanentDelete(reportId);
+    });
+  });
 }
 
 // ===== REPORT LIST =====
@@ -1100,11 +1640,22 @@ async function renderReportList() {
   }
 
   document.getElementById('mainContent').innerHTML = filterHtml + `<div id="rptList">${reports.map(r => `
-    <div class="report-item" onclick="editReport('${r.id}')" data-status="${r.status}">
+    <div class="report-item report-open-item" data-report-id="${escapeHtml(r.id)}" data-status="${r.status}">
       <div style="width:40px;height:40px;background:${r.finalResult === 'pass' ? '#d4edda' : '#f8d7da'};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem">${r.finalResult === 'pass' ? '✅' : '❌'}</div>
-      <div class="report-info"><h3>PO: ${escapeHtml(r.poOrderNo || '--')} ${escapeHtml(r.colorFilmModel || '')}</h3><p>${r.date} · ${r.inspector || ''} · ${r.productType || ''}</p></div>
+      <div class="report-info">
+        <h3>PO: ${escapeHtml(r.poOrderNo || '--')} ${escapeHtml(r.colorFilmModel || '')}</h3>
+        <p>${escapeHtml(r.date || '')} · ${escapeHtml(r.inspector || '')} · ${escapeHtml(r.productType || '')}</p>
+        ${(() => { const up = getReportUploadMeta(r); return `<p class="upload-status ${up.className}">${escapeHtml(up.text)}</p>`; })()}
+      </div>
       <span class="badge ${sClass[r.status]}">${sLabel[r.status]}</span>
     </div>`).join('')}</div>`;
+
+  document.querySelectorAll('#rptList .report-open-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const reportId = item.getAttribute('data-report-id');
+      if (reportId) editReport(reportId);
+    });
+  });
 }
 
 function filterList(status, btn) {

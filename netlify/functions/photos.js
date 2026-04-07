@@ -14,40 +14,53 @@ exports.handler = async (event) => {
   // JWT 认证
   const authResult = verifyToken(event.headers.authorization || event.headers.Authorization || '');
   if (!authResult.valid) {
-    return errorResponse(authResult.error, 401);
+    const code = String(authResult.error || '').includes('配置错误') ? 500 : 401;
+    return errorResponse(authResult.error, code);
   }
   const currentUser = authResult.user;
   const supabase = getDb();
   const method = event.httpMethod;
 
   try {
+    async function ensureReportAccess(reportId, actionText) {
+      const { data: rows, error } = await supabase
+        .from('reports')
+        .select('id, created_by')
+        .eq('id', reportId)
+        .limit(1);
+      if (error) throw error;
+      if (!rows || rows.length === 0) {
+        return { ok: false, response: errorResponse('报告不存在', 404) };
+      }
+      const owner = rows[0].created_by;
+      if (currentUser.role !== 'supervisor' && owner !== currentUser.username) {
+        return { ok: false, response: errorResponse(`无权${actionText}此报告照片`, 403) };
+      }
+      return { ok: true, owner };
+    }
+
     // ===== GET: 获取照片 =====
     if (method === 'GET') {
       const reportId = event.queryStringParameters?.reportId;
       if (!reportId) return errorResponse('缺少 reportId');
       const slot = event.queryStringParameters?.slot;
 
-      // 检查权限
-      if (currentUser.role !== 'supervisor') {
-        const { data: existing } = await supabase
-          .from('reports')
-          .select('created_by')
-          .eq('id', reportId);
-
-        if (existing && existing.length > 0 && existing[0].created_by !== currentUser.username) {
-          return errorResponse('无权查看此报告照片', 403);
-        }
-      }
+      const access = await ensureReportAccess(reportId, '查看');
+      if (!access.ok) return access.response;
 
       // 先尝试从photos表读取
       if (slot !== undefined && slot !== null) {
+        const parsedSlot = parseInt(slot, 10);
+        if (isNaN(parsedSlot) || parsedSlot < 0 || parsedSlot > 28) {
+          return errorResponse('无效的 slot (0-28)', 400);
+        }
         const { data: rows, error } = await supabase
           .from('report_photos')
           .select('data_url')
           .eq('report_id', reportId)
-          .eq('slot_index', parseInt(slot));
+          .eq('slot_index', parsedSlot);
 
-        if (!error && rows && rows.length > 0) {
+        if (!error && rows && rows.length > 0 && typeof rows[0].data_url === 'string' && rows[0].data_url.startsWith('data:image/')) {
           return jsonResponse({ dataUrl: rows[0].data_url });
         }
 
@@ -60,7 +73,7 @@ exports.handler = async (event) => {
         if (reportRows && reportRows.length > 0) {
           const report = reportRows[0].data || {};
           const photo = report.photos?.[slot];
-          if (photo && photo !== '__HAS_PHOTO__') {
+          if (typeof photo === 'string' && photo.startsWith('data:image/')) {
             return jsonResponse({ dataUrl: photo });
           }
         }
@@ -70,7 +83,7 @@ exports.handler = async (event) => {
       // 获取所有照片的slot列表（不含数据，避免超payload）
       const { data: rows } = await supabase
         .from('report_photos')
-        .select('slot_index, data_url')
+        .select('slot_index')
         .eq('report_id', reportId)
         .order('slot_index', { ascending: true });
 
@@ -85,12 +98,12 @@ exports.handler = async (event) => {
       // 从photos表
       if (rows) {
         rows.forEach(r => {
-          slots[r.slot_index] = { stored: true, size: r.data_url ? r.data_url.length : 0 };
+          slots[r.slot_index] = { stored: true };
         });
       }
       // 从JSONB（向后兼容）
       Object.keys(reportPhotos).forEach(k => {
-        if (!slots[k] && reportPhotos[k] && reportPhotos[k] !== '__HAS_PHOTO__') {
+        if (!slots[k] && typeof reportPhotos[k] === 'string' && reportPhotos[k].startsWith('data:image/')) {
           slots[k] = { stored: false, size: reportPhotos[k].length };
         }
       });
@@ -103,19 +116,12 @@ exports.handler = async (event) => {
       const { reportId, slotIndex, dataUrl } = body;
       if (!reportId) return errorResponse('缺少 reportId');
       if (slotIndex === undefined || slotIndex === null) return errorResponse('缺少 slotIndex');
+      const parsedSlot = parseInt(slotIndex, 10);
+      if (isNaN(parsedSlot) || parsedSlot < 0 || parsedSlot > 28) return errorResponse('无效的 slotIndex (0-28)', 400);
       if (!dataUrl) return errorResponse('缺少 dataUrl');
 
-      // 检查权限
-      if (currentUser.role !== 'supervisor') {
-        const { data: existing } = await supabase
-          .from('reports')
-          .select('created_by')
-          .eq('id', reportId);
-
-        if (existing && existing.length > 0 && existing[0].created_by !== currentUser.username) {
-          return errorResponse('无权修改此报告照片', 403);
-        }
-      }
+      const access = await ensureReportAccess(reportId, '修改');
+      if (!access.ok) return access.response;
 
       // 验证 dataUrl 格式：必须是真正的 base64 图片数据
       if (!dataUrl.startsWith('data:image/')) {
@@ -132,7 +138,7 @@ exports.handler = async (event) => {
         .from('report_photos')
         .upsert({
           report_id: reportId,
-          slot_index: parseInt(slotIndex),
+          slot_index: parsedSlot,
           data_url: dataUrl,
           uploaded_by: currentUser.username,
           updated_at: new Date().toISOString(),
@@ -148,24 +154,19 @@ exports.handler = async (event) => {
       const reportId = event.queryStringParameters?.reportId;
       const slot = event.queryStringParameters?.slot;
       if (!reportId) return errorResponse('缺少 reportId');
-
-      if (currentUser.role !== 'supervisor') {
-        const { data: existing } = await supabase
-          .from('reports')
-          .select('created_by')
-          .eq('id', reportId);
-
-        if (existing && existing.length > 0 && existing[0].created_by !== currentUser.username) {
-          return errorResponse('无权删除此报告照片', 403);
-        }
-      }
+      const access = await ensureReportAccess(reportId, '删除');
+      if (!access.ok) return access.response;
 
       if (slot !== undefined && slot !== null) {
+        const parsedSlot = parseInt(slot, 10);
+        if (isNaN(parsedSlot) || parsedSlot < 0 || parsedSlot > 28) {
+          return errorResponse('无效的 slot (0-28)', 400);
+        }
         const { error } = await supabase
           .from('report_photos')
           .delete()
           .eq('report_id', reportId)
-          .eq('slot_index', parseInt(slot));
+          .eq('slot_index', parsedSlot);
         if (error) throw error;
       } else {
         const { error } = await supabase

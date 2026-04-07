@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inspection-pwa-v10';
+const CACHE_NAME = 'inspection-pwa-v15';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -12,7 +12,16 @@ const PRECACHE_ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_ASSETS)));
+  const requiredAssets = PRECACHE_ASSETS.filter(u => !u.startsWith('http'));
+  const optionalAssets = PRECACHE_ASSETS.filter(u => u.startsWith('http'));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(async cache => {
+      await cache.addAll(requiredAssets);
+      for (const url of optionalAssets) {
+        try { await cache.add(url); } catch (e) { console.warn('Optional cache failed:', url); }
+      }
+    })
+  );
   self.skipWaiting();
 });
 
@@ -20,9 +29,8 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
-    )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 async function networkFirst(request) {

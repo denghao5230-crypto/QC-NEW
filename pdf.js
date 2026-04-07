@@ -44,10 +44,60 @@ function evaluateDimensionForPDF(values, stdStr, nominal) {
   return { result: anyFail ? 'FAIL' : 'PASS', outOfSpec };
 }
 
+function isPdfPhotoPlaceholder(value) {
+  return value === '__HAS_PHOTO__' || value === '__CLOUD_PHOTO__';
+}
+
+function isPdfRealPhoto(value) {
+  if (typeof isRealPhotoDataUrl === 'function') return isRealPhotoDataUrl(value);
+  return typeof value === 'string' && value.startsWith('data:image/');
+}
+
+async function preloadCloudPhotosForPDF(report) {
+  if (!report || !report.photos) return { total: 0, loaded: 0, failed: 0 };
+  const cloudSlots = Object.keys(report.photos).filter(k => isPdfPhotoPlaceholder(report.photos[k]));
+  if (cloudSlots.length === 0) return { total: 0, loaded: 0, failed: 0 };
+  if (typeof fetchCloudPhoto !== 'function') {
+    return { total: cloudSlots.length, loaded: 0, failed: cloudSlots.length };
+  }
+
+  let loaded = 0;
+  let failed = 0;
+  const queue = [...cloudSlots];
+  const workerCount = Math.min(3, queue.length); // limit concurrent photo fetches for weak networks
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (queue.length > 0) {
+      const slotKey = queue.shift();
+      const slotIndex = parseInt(slotKey, 10);
+      if (Number.isNaN(slotIndex)) { failed++; continue; }
+      try {
+        const dataUrl = await fetchCloudPhoto(report.id, slotIndex, 2);
+        if (isPdfRealPhoto(dataUrl)) {
+          report.photos[slotIndex] = dataUrl;
+          loaded++;
+        } else {
+          failed++;
+        }
+      } catch (e) {
+        failed++;
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  return { total: cloudSlots.length, loaded, failed };
+}
+
 async function generatePDF() {
   const r = APP.currentReport;
   if (!r) { showToast('没有数据', 'error'); return; }
+  if (!r.photos) r.photos = {};
   showToast('正在生成PDF... Generating...', 'info');
+
+  const preload = await preloadCloudPhotosForPDF(r);
+  if (preload.total > 0 && preload.failed > 0) {
+    showToast(`已加载 ${preload.loaded}/${preload.total} 张云端照片，未加载的将显示为空白`, 'warning');
+  }
 
   let c = document.getElementById('pdfArea');
   if (c) c.remove();
@@ -148,7 +198,7 @@ async function generatePDF() {
     <table><tr><td class="ftd" style="width:40%">终检 Inspector ผู้ตรวจสอบ နောက်ဆုံးစစ်ဆေးသူ：Htet Aung</td>
     <td class="ftd" style="width:40%">审核 Reviewer ผู้ทบทวน ပြန်လည်စစ်ဆေးသူ：Mr. Jianhuai Luo</td>
     <td class="ftd" style="width:20%"></td></tr></table>
-    ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + r.updatedAt.slice(0, 10) + '</div></div>' : ''}
+    ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + ((r.updatedAt || r.date || '').slice(0, 10)) + '</div></div>' : ''}
     <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">DCN:FM-00-QC-023-001</div>
   </div>`;
 
@@ -161,7 +211,7 @@ async function generatePDF() {
         const idx = i + j;
         if (idx >= PHOTO_SLOTS.length) { rows += '<td class="pc"><div class="emp"></div></td>'; continue; }
         const lbl = PHOTO_SLOTS[idx];
-        const photo = r.photos[idx];
+        const photo = isPdfRealPhoto(r.photos[idx]) ? r.photos[idx] : '';
         rows += `<td class="pc"><div class="pl">${lbl}</div>${photo ? `<div class="img-wrap"><img src="${photo}"></div>` : '<div class="emp"></div>'}</td>`;
       }
       rows += '</tr>';
@@ -172,7 +222,7 @@ async function generatePDF() {
       <td style="font-size:6px;width:50%">产品型号 Product Model ကုန်ပစ္စည်းမော်ဒယ် <b>${escapeHtml(r.colorFilmModel)}</b></td></tr></table>
       <table>${rows}</table>
       ${isLast ? `<table style="margin-top:4px"><tr><td class="ftd">终检 Inspector စစ်ဆေးသူ：Htet Aung</td><td class="ftd">审核 Reviewer ပြန်လည်စစ်ဆေးသူ：Mr. Jianhuai Luo</td><td class="ftd">日期 Date ရက်စွဲ：${r.date}</td></tr></table>` : ''}
-      ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + r.updatedAt.slice(0, 10) + '</div></div>' : ''}
+      ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + ((r.updatedAt || r.date || '').slice(0, 10)) + '</div></div>' : ''}
       <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">FM-QC-86_02 : Rev.00</div>
     </div>`;
   }

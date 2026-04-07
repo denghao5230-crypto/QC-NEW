@@ -1,4 +1,4 @@
-const CACHE_NAME = 'inspection-pwa-v7';
+const CACHE_NAME = 'inspection-pwa-v8';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -8,7 +8,18 @@ const PRECACHE_ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(PRECACHE_ASSETS)));
+  // Separate required assets (local) from optional (CDN)
+  const requiredAssets = PRECACHE_ASSETS.filter(u => !u.startsWith('http'));
+  const optionalAssets = PRECACHE_ASSETS.filter(u => u.startsWith('http'));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(async cache => {
+      await cache.addAll(requiredAssets);
+      // CDN assets are optional — don't fail install if CDN is down
+      for (const url of optionalAssets) {
+        try { await cache.add(url); } catch (e) { console.warn('Optional cache failed:', url); }
+      }
+    })
+  );
   self.skipWaiting();
 });
 
@@ -16,9 +27,8 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
-    )
+    ).then(() => self.clients.claim()) // claim inside waitUntil so it completes properly
   );
-  self.clients.claim();
 });
 
 async function networkFirst(request) {
@@ -57,9 +67,13 @@ async function cacheFirst(request) {
 }
 
 self.addEventListener('fetch', event => {
+  // Non-GET requests (POST/PUT/DELETE) go directly to network — don't interfere
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
+  // API calls always go to network (reports, photos, login endpoints)
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/api')) return;
 
   // Don't intercept Supabase requests — always go to network
   if (url.hostname.includes('supabase.co')) return;

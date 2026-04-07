@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const { getDb, jsonResponse, errorResponse, handleCors } = require('./db');
 
 // 简单的管理密钥验证（防止任意注册）
-const ADMIN_KEY = process.env.ADMIN_KEY || 'senia-admin-2024';
+const ADMIN_KEY = process.env.ADMIN_KEY;
 
 exports.handler = async (event) => {
   const cors = handleCors(event);
@@ -13,6 +13,10 @@ exports.handler = async (event) => {
   }
 
   try {
+    if (!ADMIN_KEY || ADMIN_KEY.length < 12) {
+      return errorResponse('服务器配置错误：ADMIN_KEY 未设置或过短', 500);
+    }
+
     const { username, password, name, role, adminKey } = JSON.parse(event.body || '{}');
 
     // 验证管理密钥

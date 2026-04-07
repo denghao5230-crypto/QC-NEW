@@ -8,7 +8,8 @@ exports.handler = async (event) => {
   // ===== JWT 认证 =====
   const authResult = verifyToken(event.headers.authorization || event.headers.Authorization || '');
   if (!authResult.valid) {
-    return errorResponse(authResult.error, 401);
+    const code = String(authResult.error || '').includes('配置错误') ? 500 : 401;
+    return errorResponse(authResult.error, code);
   }
   const currentUser = authResult.user;
 
@@ -21,7 +22,8 @@ exports.handler = async (event) => {
       let query = supabase
         .from('reports')
         .select('id, data, status, created_by, created_at, updated_at')
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .limit(500);
 
       // 质检员只能看自己的报告
       if (currentUser.role !== 'supervisor') {
@@ -34,9 +36,18 @@ exports.handler = async (event) => {
       // Also fetch photo slot indices from the report_photos table
       let photoSlotMap = {};
       try {
-        const { data: photoRows, error: photoErr } = await supabase
-          .from('report_photos')
-          .select('report_id, slot_index');
+        const reportIds = (rows || []).map(r => r.id).filter(Boolean);
+        let photoRows = [];
+        let photoErr = null;
+        if (reportIds.length > 0) {
+          const photoQuery = await supabase
+            .from('report_photos')
+            .select('report_id, slot_index')
+            .in('report_id', reportIds)
+            .like('data_url', 'data:image/%');
+          photoRows = photoQuery.data || [];
+          photoErr = photoQuery.error;
+        }
 
         if (!photoErr && photoRows) {
           photoRows.forEach(pr => {
@@ -60,7 +71,7 @@ exports.handler = async (event) => {
         // From JSONB (legacy)
         if (report.photos) {
           Object.keys(report.photos).forEach(k => {
-            if (report.photos[k] && report.photos[k] !== '__HAS_PHOTO__') {
+            if (typeof report.photos[k] === 'string' && report.photos[k].startsWith('data:image/')) {
               photoFlags[k] = '__HAS_PHOTO__';
             }
           });
@@ -86,31 +97,42 @@ exports.handler = async (event) => {
         return errorResponse('缺少报告ID');
       }
 
-      // 检查权限：质检员只能修改自己的报告
-      if (currentUser.role !== 'supervisor') {
-        const { data: existing } = await supabase
-          .from('reports')
-          .select('created_by')
-          .eq('id', report.id);
-
-        if (existing && existing.length > 0 && existing[0].created_by !== currentUser.username) {
-          return errorResponse('无权修改此报告', 403);
-        }
+      const allowedStatuses = new Set(['draft', 'submitted', 'approved', 'rejected', 'trashed']);
+      if (report.status && !allowedStatuses.has(report.status)) {
+        return errorResponse('无效状态值', 400);
       }
 
-      // 检查权限：只有主管可以审批/驳回
+      // Fetch existing row once and enforce ownership server-side
+      const { data: existingRows, error: existingErr } = await supabase
+        .from('reports')
+        .select('id, created_by, status')
+        .eq('id', report.id)
+        .limit(1);
+      if (existingErr) throw existingErr;
+
+      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+      if (existing && currentUser.role !== 'supervisor' && existing.created_by !== currentUser.username) {
+        return errorResponse('无权修改此报告', 403);
+      }
       if ((report.status === 'approved' || report.status === 'rejected') && currentUser.role !== 'supervisor') {
         return errorResponse('只有主管可以审批报告', 403);
       }
+      if (existing && (existing.status === 'approved' || existing.status === 'rejected') && currentUser.role !== 'supervisor') {
+        return errorResponse('已审批报告不可修改', 403);
+      }
+
+      const createdBy = existing ? existing.created_by : currentUser.username;
+      report.createdBy = createdBy;
+      report.updatedAt = new Date().toISOString();
 
       const { error } = await supabase
         .from('reports')
         .upsert({
           id: report.id,
           data: report,
-          status: report.status || 'draft',
-          created_by: report.createdBy || currentUser.username,
-          updated_at: report.updatedAt || new Date().toISOString(),
+          status: report.status || existing?.status || 'draft',
+          created_by: createdBy,
+          updated_at: report.updatedAt,
         }, { onConflict: 'id' });
 
       if (error) throw error;
