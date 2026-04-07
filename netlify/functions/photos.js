@@ -25,16 +25,24 @@ exports.handler = async (event) => {
     async function ensureReportAccess(reportId, actionText) {
       const { data: rows, error } = await supabase
         .from('reports')
-        .select('id, created_by')
+        .select('id, created_by, data')
         .eq('id', reportId)
         .limit(1);
       if (error) throw error;
       if (!rows || rows.length === 0) {
         return { ok: false, response: errorResponse('报告不存在', 404) };
       }
-      const owner = rows[0].created_by;
-      if (currentUser.role !== 'supervisor' && owner !== currentUser.username) {
-        return { ok: false, response: errorResponse(`无权${actionText}此报告照片`, 403) };
+      const row = rows[0] || {};
+      const dataOwner = row.data && typeof row.data === 'object' ? (row.data.createdBy || row.data.created_by) : null;
+      const owner = row.created_by || dataOwner || null;
+      if (currentUser.role !== 'supervisor') {
+        if (owner && owner !== currentUser.username) {
+          return { ok: false, response: errorResponse(`无权${actionText}此报告照片`, 403) };
+        }
+        // 历史数据兼容：极少数旧报告缺少 owner 信息，允许查看，修改仍要求明确归属
+        if (!owner && actionText !== '查看') {
+          return { ok: false, response: errorResponse('报告归属信息缺失，仅主管可修改照片', 403) };
+        }
       }
       return { ok: true, owner };
     }

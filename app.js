@@ -687,9 +687,10 @@ async function syncReports() {
  * Lazy-load a single photo from cloud when user views it
  */
 async function fetchCloudPhoto(reportId, slotIndex, retries = 2) {
+  let lastErrMsg = '';
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const result = await apiFetch(`/photos?reportId=${reportId}&slot=${slotIndex}`, { timeoutMs: 30000 });
+      const result = await apiFetch(`/photos?reportId=${encodeURIComponent(reportId)}&slot=${encodeURIComponent(slotIndex)}`, { timeoutMs: 30000 });
       if (result && isRealPhotoDataUrl(result.dataUrl)) {
         // Update all in-memory references, then save once to IndexedDB
         if (APP.currentReport && APP.currentReport.id === reportId) {
@@ -707,14 +708,21 @@ async function fetchCloudPhoto(reportId, slotIndex, retries = 2) {
         const toSave = (APP.currentReport && APP.currentReport.id === reportId)
           ? APP.currentReport : listReport;
         if (toSave) await safeLocalSave(toSave, 'fetch-cloud-photo');
+        APP._lastPhotoLoadError = '';
         return result.dataUrl;
       }
-      if (result && result.dataUrl === null) return null;
+      if (result && result.dataUrl === null) {
+        lastErrMsg = '云端未找到该照片';
+        APP._lastPhotoLoadError = lastErrMsg;
+        return null;
+      }
     } catch (e) {
-      console.warn(`Failed to fetch photo ${slotIndex} for ${reportId} (attempt ${attempt + 1}):`, e.message);
+      lastErrMsg = e && e.message ? e.message : '未知错误';
+      console.warn(`Failed to fetch photo ${slotIndex} for ${reportId} (attempt ${attempt + 1}):`, lastErrMsg);
       if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
     }
   }
+  APP._lastPhotoLoadError = lastErrMsg || '网络异常';
   return null;
 }
 
@@ -742,6 +750,8 @@ async function loadCloudPhoto(reportId, slotIndex) {
     }
   } else if (slot) {
     slot.innerHTML = '<div class="icon" style="color:#e74c3c">⚠</div><div style="font-size:.6rem;color:#e74c3c">加载失败</div><div class="label">' + (PHOTO_SLOTS[slotIndex] || '') + '</div>';
+    const reason = APP._lastPhotoLoadError ? `：${APP._lastPhotoLoadError}` : '';
+    showToast(`图片加载失败${reason}`, 'warning');
   }
 }
 

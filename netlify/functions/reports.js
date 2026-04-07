@@ -25,18 +25,22 @@ exports.handler = async (event) => {
         .order('updated_at', { ascending: false })
         .limit(500);
 
-      // 质检员只能看自己的报告
-      if (currentUser.role !== 'supervisor') {
-        query = query.eq('created_by', currentUser.username);
-      }
-
       const { data: rows, error } = await query;
       if (error) throw error;
+      const visibleRows = currentUser.role === 'supervisor'
+        ? (rows || [])
+        : (rows || []).filter(row => {
+          const dataOwner = row && row.data && typeof row.data === 'object'
+            ? (row.data.createdBy || row.data.created_by)
+            : null;
+          const owner = row.created_by || dataOwner || null;
+          return owner === currentUser.username;
+        });
 
       // Also fetch photo slot indices from the report_photos table
       let photoSlotMap = {};
       try {
-        const reportIds = (rows || []).map(r => r.id).filter(Boolean);
+        const reportIds = visibleRows.map(r => r.id).filter(Boolean);
         let photoRows = [];
         let photoErr = null;
         if (reportIds.length > 0) {
@@ -60,7 +64,7 @@ exports.handler = async (event) => {
         console.warn('report_photos table not available:', e.message);
       }
 
-      const reports = (rows || []).map(row => {
+      const reports = visibleRows.map(row => {
         const report = row.data || {};
         report.id = row.id;
         report.status = row.status || report.status;
@@ -105,13 +109,18 @@ exports.handler = async (event) => {
       // Fetch existing row once and enforce ownership server-side
       const { data: existingRows, error: existingErr } = await supabase
         .from('reports')
-        .select('id, created_by, status')
+        .select('id, created_by, status, data')
         .eq('id', report.id)
         .limit(1);
       if (existingErr) throw existingErr;
 
       const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
-      if (existing && currentUser.role !== 'supervisor' && existing.created_by !== currentUser.username) {
+      const existingDataOwner = existing && existing.data && typeof existing.data === 'object'
+        ? (existing.data.createdBy || existing.data.created_by)
+        : null;
+      const existingOwner = existing ? (existing.created_by || existingDataOwner || null) : null;
+
+      if (existing && currentUser.role !== 'supervisor' && existingOwner && existingOwner !== currentUser.username) {
         return errorResponse('无权修改此报告', 403);
       }
       if ((report.status === 'approved' || report.status === 'rejected') && currentUser.role !== 'supervisor') {
@@ -121,7 +130,7 @@ exports.handler = async (event) => {
         return errorResponse('已审批报告不可修改', 403);
       }
 
-      const createdBy = existing ? existing.created_by : currentUser.username;
+      const createdBy = existingOwner || report.createdBy || currentUser.username;
       report.createdBy = createdBy;
       report.updatedAt = new Date().toISOString();
 
