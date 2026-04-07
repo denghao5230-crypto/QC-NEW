@@ -1,10 +1,11 @@
-const CACHE_NAME = 'inspection-pwa-v15';
+const CACHE_NAME = 'inspection-pwa-v17';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
   '/pdf.js',
+  '/compress-worker.js',
   '/manifest.json',
   '/logo-white.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',

@@ -92,6 +92,8 @@ async function generatePDF() {
   const r = APP.currentReport;
   if (!r) { showToast('没有数据', 'error'); return; }
   if (!r.photos) r.photos = {};
+  const qcSigner = escapeHtml(typeof QC_SIGN_NAME !== 'undefined' ? QC_SIGN_NAME : 'Htet Aung');
+  const reviewerSigner = escapeHtml(typeof REVIEWER_SIGN_NAME !== 'undefined' ? REVIEWER_SIGN_NAME : 'Mr. Luo Jianhuai');
   showToast('正在生成PDF... Generating...', 'info');
 
   const preload = await preloadCloudPhotosForPDF(r);
@@ -195,8 +197,8 @@ async function generatePDF() {
     <div class="res ${r.finalResult === 'pass' ? 'resbg' : ''}" style="margin:3px 0;white-space:pre-line">${r.finalResult === 'pass'
       ? '■检验合格，可以发货。Final inspection PASSED, goods can be shipped.\nผ่านการตรวจสอบ สามารถจัดส่งได้ စစ်ဆေးမှုအောင်မြင်၊ ကုန်ပစ္စည်းများတင်ပို့နိုင်ပါသည်။'
       : '■检验不合格，不能发货。Inspection FAILED, cannot ship.\nไม่ผ่านการตรวจสอบ ไม่สามารถจัดส่งได้ စစ်ဆေးမှုမအောင်မြင်၊ ပို့ဆောင်ပေးခြင်းမပြုလုပ်နိုင်ပါ။'}</div>
-    <table><tr><td class="ftd" style="width:40%">终检 Inspector ผู้ตรวจสอบ နောက်ဆုံးစစ်ဆေးသူ：Htet Aung</td>
-    <td class="ftd" style="width:40%">审核 Reviewer ผู้ทบทวน ပြန်လည်စစ်ဆေးသူ：Mr. Jianhuai Luo</td>
+    <table><tr><td class="ftd" style="width:40%">终检 Inspector ผู้ตรวจสอบ နောက်ဆုံးစစ်ဆေးသူ：${qcSigner}</td>
+    <td class="ftd" style="width:40%">审核 Reviewer ผู้ทบทวน ပြန်လည်စစ်ဆေးသူ：${reviewerSigner}</td>
     <td class="ftd" style="width:20%"></td></tr></table>
     ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + ((r.updatedAt || r.date || '').slice(0, 10)) + '</div></div>' : ''}
     <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">DCN:FM-00-QC-023-001</div>
@@ -221,7 +223,7 @@ async function generatePDF() {
       <table style="margin-bottom:3px"><tr><td style="font-size:6px;width:50%">PO订单号 PO Order No. အမှာစာနံပါတ် <b>${escapeHtml(r.poOrderNo)}</b></td>
       <td style="font-size:6px;width:50%">产品型号 Product Model ကုန်ပစ္စည်းမော်ဒယ် <b>${escapeHtml(r.colorFilmModel)}</b></td></tr></table>
       <table>${rows}</table>
-      ${isLast ? `<table style="margin-top:4px"><tr><td class="ftd">终检 Inspector စစ်ဆေးသူ：Htet Aung</td><td class="ftd">审核 Reviewer ပြန်လည်စစ်ဆေးသူ：Mr. Jianhuai Luo</td><td class="ftd">日期 Date ရက်စွဲ：${r.date}</td></tr></table>` : ''}
+      ${isLast ? `<table style="margin-top:4px"><tr><td class="ftd">终检 Inspector စစ်ဆေးသူ：${qcSigner}</td><td class="ftd">审核 Reviewer ပြန်လည်စစ်ဆေးသူ：${reviewerSigner}</td><td class="ftd">日期 Date ရက်စွဲ：${r.date}</td></tr></table>` : ''}
       ${r.status === 'approved' ? '<div class="pass-stamp"><div class="t">PASS</div><div class="d">' + ((r.updatedAt || r.date || '').slice(0, 10)) + '</div></div>' : ''}
       <div style="position:absolute;bottom:4px;right:16px;font-size:4.5px;color:#999">FM-QC-86_02 : Rev.00</div>
     </div>`;

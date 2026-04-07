@@ -2,6 +2,8 @@
 
 // ===== CONFIG =====
 const API_BASE = '/api';
+const QC_SIGN_NAME = 'Htet Aung';
+const REVIEWER_SIGN_NAME = 'Mr. Luo Jianhuai';
 
 // ===== APP STATE =====
 const APP = {
@@ -13,7 +15,13 @@ const APP = {
   editingPhotoSlot: null,
   db: null,
   syncState: { mode: 'idle', text: '初始化中...' },
-  syncInProgress: false
+  syncInProgress: false,
+  perf: {
+    enabled: true,
+    maxRecords: 240,
+    records: [],
+    firstScreenStart: 0
+  }
 };
 
 // ===== XSS PROTECTION =====
@@ -21,6 +29,168 @@ function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   const s = String(str);
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ===== Performance Metrics =====
+function perfNow() {
+  return (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now()
+    : Date.now();
+}
+
+function perfRound(ms) {
+  return Math.round(ms * 10) / 10;
+}
+
+function perfRecord(type, ms, meta = {}) {
+  if (!APP.perf || !APP.perf.enabled) return;
+  if (!Number.isFinite(ms)) return;
+  APP.perf.records.push({
+    type,
+    ms: perfRound(ms),
+    ts: new Date().toISOString(),
+    meta
+  });
+  const max = APP.perf.maxRecords || 240;
+  if (APP.perf.records.length > max) {
+    APP.perf.records.splice(0, APP.perf.records.length - max);
+  }
+  const overlay = document.getElementById('perfPanelOverlay');
+  if (overlay && overlay.style.display !== 'none' && !APP._perfPanelRaf) {
+    const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+    APP._perfPanelRaf = raf(() => {
+      APP._perfPanelRaf = 0;
+      renderPerfPanel();
+    });
+  }
+}
+
+function perfGetRecords(type) {
+  const all = (APP.perf && APP.perf.records) ? APP.perf.records : [];
+  if (!type) return all.slice();
+  return all.filter(r => r.type === type);
+}
+
+function perfPercentile(values, p) {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
+function perfGetStats(type) {
+  const items = perfGetRecords(type);
+  if (!items.length) return { count: 0, last: 0, avg: 0, p95: 0 };
+  const values = items.map(x => x.ms);
+  const sum = values.reduce((a, b) => a + b, 0);
+  return {
+    count: values.length,
+    last: values[values.length - 1],
+    avg: perfRound(sum / values.length),
+    p95: perfRound(perfPercentile(values, 95))
+  };
+}
+
+function formatPerfMs(ms) {
+  if (!Number.isFinite(ms)) return '-';
+  return `${perfRound(ms)} ms`;
+}
+
+function perfSummaryRows() {
+  return [
+    { key: 'first_screen_render', label: '首屏渲染' },
+    { key: 'tab_switch', label: '切换标签' },
+    { key: 'report_upload_total', label: '报告上传总耗时' },
+    { key: 'photo_local_process', label: '本地图片处理' },
+    { key: 'photo_download', label: '云端图片下载' }
+  ];
+}
+
+function ensurePerfPanel() {
+  if (document.getElementById('perfPanelOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'perfPanelOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1200;display:none;';
+  overlay.innerHTML = `
+    <div id="perfPanel" style="position:absolute;left:10px;right:10px;top:8vh;bottom:8vh;background:#fff;border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.25)">
+      <div style="padding:10px 12px;background:#1a5276;color:#fff;display:flex;align-items:center;justify-content:space-between">
+        <strong style="font-size:.95rem">性能测速面板</strong>
+        <button onclick="closePerfPanel()" style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer">关闭</button>
+      </div>
+      <div id="perfPanelBody" style="padding:10px;overflow:auto;flex:1"></div>
+      <div style="padding:10px;border-top:1px solid #eee;display:flex;gap:8px">
+        <button class="btn btn-outline" style="flex:1" onclick="clearPerfMetrics()">清空记录</button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closePerfPanel();
+  });
+  document.body.appendChild(overlay);
+}
+
+function renderPerfPanel() {
+  ensurePerfPanel();
+  const body = document.getElementById('perfPanelBody');
+  if (!body) return;
+  const summaryHtml = perfSummaryRows().map(item => {
+    const s = perfGetStats(item.key);
+    return `<div style="border:1px solid #e6e6e6;border-radius:8px;padding:8px;margin-bottom:8px">
+      <div style="font-weight:600;color:#1a5276;font-size:.88rem">${item.label}</div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:6px;font-size:.78rem">
+        <div><div style="color:#888">次数</div><div>${s.count}</div></div>
+        <div><div style="color:#888">最近</div><div>${formatPerfMs(s.last)}</div></div>
+        <div><div style="color:#888">平均</div><div>${formatPerfMs(s.avg)}</div></div>
+        <div><div style="color:#888">P95</div><div>${formatPerfMs(s.p95)}</div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const latest = perfGetRecords().slice(-40).reverse();
+  const rows = latest.map(r => {
+    let meta = '';
+    if (r.meta && Object.keys(r.meta).length) {
+      const raw = JSON.stringify(r.meta);
+      const clipped = raw.length > 160 ? `${raw.slice(0, 157)}...` : raw;
+      meta = escapeHtml(clipped);
+    }
+    return `<tr>
+      <td style="padding:6px;border-bottom:1px solid #f0f0f0;white-space:nowrap">${escapeHtml(r.type)}</td>
+      <td style="padding:6px;border-bottom:1px solid #f0f0f0;white-space:nowrap">${formatPerfMs(r.ms)}</td>
+      <td style="padding:6px;border-bottom:1px solid #f0f0f0;color:#666;font-size:.75rem">${meta}</td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML = `
+    <div style="font-size:.76rem;color:#666;margin-bottom:8px">记录总数：${perfGetRecords().length}</div>
+    ${summaryHtml}
+    <div style="margin-top:10px">
+      <div style="font-weight:600;color:#1a5276;margin-bottom:6px">最近记录</div>
+      <div style="overflow:auto;border:1px solid #ececec;border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+          <thead><tr><th style="text-align:left;padding:6px;background:#f7f9fb">指标</th><th style="text-align:left;padding:6px;background:#f7f9fb">耗时</th><th style="text-align:left;padding:6px;background:#f7f9fb">附加信息</th></tr></thead>
+          <tbody>${rows || '<tr><td colspan="3" style="padding:10px;color:#888">暂无记录</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function openPerfPanel() {
+  renderPerfPanel();
+  const overlay = document.getElementById('perfPanelOverlay');
+  if (overlay) overlay.style.display = 'block';
+}
+
+function closePerfPanel() {
+  const overlay = document.getElementById('perfPanelOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function clearPerfMetrics() {
+  APP.perf.records = [];
+  renderPerfPanel();
+  showToast('已清空性能记录', 'info');
 }
 
 // ===== API LAYER (with JWT) =====
@@ -455,6 +625,7 @@ async function refreshSyncStateFromLocal() {
 }
 
 async function uploadReportToCloud(report, context = 'manual') {
+  const uploadStart = perfNow();
   const unsyncedSlots = getUnsyncedPhotoSlots(report);
   const total = unsyncedSlots.length;
   let done = 0;
@@ -477,10 +648,13 @@ async function uploadReportToCloud(report, context = 'manual') {
     setUploadStatus(report, { state: 'pending', total, done, failed: total, message: '网络异常，等待自动重试', lastError });
     report.syncStatus = 'pending';
     await safeLocalSave(report, 'upload-report-failed');
+    perfRecord('report_upload_total', perfNow() - uploadStart, { context, total, done, failed: total, ok: false, stage: 'report' });
     return { ok: false, total, done, failed: total, lastError };
   }
 
-  for (const slotIdx of unsyncedSlots) {
+  // Parallel photo upload — up to 3 concurrent uploads for speed
+  const CONCURRENCY = 3;
+  const uploadOnePhoto = async (slotIdx) => {
     try {
       await apiFetchWithRetry('/photos', {
         method: 'POST',
@@ -499,13 +673,19 @@ async function uploadReportToCloud(report, context = 'manual') {
       lastError = e.message || '照片上传失败';
     }
     setUploadStatus(report, {
-      state: failed > 0 ? 'uploading' : 'uploading',
+      state: 'uploading',
       total,
       done,
       failed,
-      message: total > 0 ? `上传中 ${done}/${total}` : '上传中',
+      message: total > 0 ? `上传中 ${done + failed}/${total}` : '上传中',
       lastError
     });
+  };
+
+  // Process in batches of CONCURRENCY
+  for (let i = 0; i < unsyncedSlots.length; i += CONCURRENCY) {
+    const batch = unsyncedSlots.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(uploadOnePhoto));
     await safeLocalSave(report, 'upload-photo-progress');
   }
 
@@ -553,6 +733,13 @@ async function uploadReportToCloud(report, context = 'manual') {
   report.updatedAt = new Date().toISOString();
   await safeLocalSave(report, 'upload-finish');
   const totalFailed = failed + deletionFailedCount;
+  perfRecord('report_upload_total', perfNow() - uploadStart, {
+    context,
+    total,
+    done,
+    failed: totalFailed,
+    ok: totalFailed === 0
+  });
   return {
     ok: totalFailed === 0,
     total,
@@ -687,6 +874,7 @@ async function syncReports() {
  * Lazy-load a single photo from cloud when user views it
  */
 async function fetchCloudPhoto(reportId, slotIndex, retries = 2) {
+  const downloadStart = perfNow();
   let lastErrMsg = '';
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -709,11 +897,13 @@ async function fetchCloudPhoto(reportId, slotIndex, retries = 2) {
           ? APP.currentReport : listReport;
         if (toSave) await safeLocalSave(toSave, 'fetch-cloud-photo');
         APP._lastPhotoLoadError = '';
+        perfRecord('photo_download', perfNow() - downloadStart, { slot: slotIndex, ok: true, attempts: attempt + 1 });
         return result.dataUrl;
       }
       if (result && result.dataUrl === null) {
         lastErrMsg = '云端未找到该照片';
         APP._lastPhotoLoadError = lastErrMsg;
+        perfRecord('photo_download', perfNow() - downloadStart, { slot: slotIndex, ok: false, reason: 'not_found', attempts: attempt + 1 });
         return null;
       }
     } catch (e) {
@@ -723,6 +913,7 @@ async function fetchCloudPhoto(reportId, slotIndex, retries = 2) {
     }
   }
   APP._lastPhotoLoadError = lastErrMsg || '网络异常';
+  perfRecord('photo_download', perfNow() - downloadStart, { slot: slotIndex, ok: false, reason: APP._lastPhotoLoadError, attempts: retries + 1 });
   return null;
 }
 
@@ -1002,6 +1193,7 @@ async function doLogin() {
   document.getElementById('loginPage').classList.remove('active');
   document.getElementById('mainApp').classList.add('active');
   document.getElementById('userBadge').textContent = APP.user.name;
+  APP.perf.firstScreenStart = perfNow();
   switchTab('list');
   window.scrollTo(0, 0);
 }
@@ -1024,6 +1216,7 @@ function logout() {
 
 // ===== TABS =====
 function switchTab(tab) {
+  const tabStart = perfNow();
   APP.currentTab = tab;
   document.querySelectorAll('#bottomNav button').forEach(b => b.classList.remove('active'));
   const tabEl = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
@@ -1032,6 +1225,9 @@ function switchTab(tab) {
   else if (tab === 'new') startNewReport();
   else if (tab === 'me') renderProfile();
   else if (tab === 'trash') renderTrash();
+  requestAnimationFrame(() => {
+    perfRecord('tab_switch', perfNow() - tabStart, { tab });
+  });
 }
 
 function showToast(msg, type = 'info') {
@@ -1056,7 +1252,7 @@ function createEmptyReport() {
     inspectItems: {}, inspectRemarks: {},
     packaging: { pcsPerBox: 12, layersPerBox: 1, boxesPerPallet: 5, layersPerPallet: 10, manualsPerBox: 0 },
     boxWeightKg: '', palletWeightKg: '', finalResult: 'pass', photos: {}, _uploadedPhotoSlots: {},
-    inspector: APP.user ? APP.user.name : '', reviewer: '',
+    inspector: QC_SIGN_NAME, reviewer: REVIEWER_SIGN_NAME,
     status: 'draft', createdAt: now.toISOString(), updatedAt: now.toISOString(),
     createdBy: APP.user ? APP.user.username : ''
   };
@@ -1166,8 +1362,46 @@ function setInspect(key, val) {
   debouncedAutoSave();
   if (!APP.currentReport.inspectItems) APP.currentReport.inspectItems = {};
   APP.currentReport.inspectItems[key] = val;
-  renderReportForm();
-  showStep(2, document.querySelectorAll('.tabs button')[2]);
+  // Incremental update: update by data attributes, avoid parsing inline onclick text
+  const inspectRows = document.querySelectorAll('.inspect-item[data-inspect-key]');
+  let targetRow = null;
+  inspectRows.forEach(row => {
+    if (!targetRow && row.dataset.inspectKey === key) targetRow = row;
+  });
+
+  if (!targetRow) {
+    // Fallback: full re-render
+    renderReportForm();
+    showStep(2, document.querySelectorAll('.tabs button')[2]);
+    return;
+  }
+
+  const passBtn = targetRow.querySelector('button[data-inspect-value="PASS"]');
+  const failBtn = targetRow.querySelector('button[data-inspect-value="FAIL"]');
+  const naBtn = targetRow.querySelector('button[data-inspect-value="NA"]');
+
+  if (passBtn) {
+    passBtn.style.background = val === 'PASS' ? '#27ae60' : '#fff';
+    passBtn.style.color = val === 'PASS' ? '#fff' : '#333';
+    passBtn.style.borderColor = val === 'PASS' ? '#27ae60' : '#ddd';
+  }
+  if (failBtn) {
+    failBtn.style.background = val === 'FAIL' ? '#e74c3c' : '#fff';
+    failBtn.style.color = val === 'FAIL' ? '#fff' : '#333';
+    failBtn.style.borderColor = val === 'FAIL' ? '#e74c3c' : '#ddd';
+  }
+  if (naBtn) {
+    naBtn.style.background = val === '' ? '#95a5a6' : '#fff';
+    naBtn.style.color = val === '' ? '#fff' : '#333';
+    naBtn.style.borderColor = val === '' ? '#95a5a6' : '#ddd';
+  }
+
+  const remarkRows = document.querySelectorAll('.inspect-remark[data-inspect-key]');
+  remarkRows.forEach(remarkRow => {
+    if (remarkRow.dataset.inspectKey === key) {
+      remarkRow.style.display = val ? 'block' : 'none';
+    }
+  });
 }
 
 function setFinalResult(val) {
@@ -1181,6 +1415,10 @@ function showStep(n, btn) {
   document.querySelectorAll('.form-step').forEach(el => el.style.display = 'none');
   const el = document.getElementById('step' + n);
   if (el) el.style.display = 'block';
+  // Auto-preload cloud photos when switching to photo tab
+  if (n === 3 && serverOnline) {
+    requestAnimationFrame(() => preloadCloudPhotos());
+  }
 }
 
 function onPhotoSlotClick(slotIndex, cloudPending) {
@@ -1190,6 +1428,47 @@ function onPhotoSlotClick(slotIndex, cloudPending) {
     return;
   }
   openPhotoMenu(slotIndex);
+}
+
+/**
+ * Batch-preload all cloud photos for the current report
+ * Called when user switches to the photo tab — loads up to 4 concurrently
+ */
+async function preloadCloudPhotos() {
+  const r = APP.currentReport;
+  if (!r || !r.photos || !serverOnline) return;
+  const reportId = r.id;
+  const cloudSlots = Object.keys(r.photos).filter(k => isPhotoPlaceholder(r.photos[k]));
+  if (cloudSlots.length === 0) return;
+
+  const PRELOAD_CONCURRENCY = 4;
+  for (let i = 0; i < cloudSlots.length; i += PRELOAD_CONCURRENCY) {
+    // Guard: stop if user navigated to a different report
+    if (!APP.currentReport || APP.currentReport.id !== reportId) return;
+    const batch = cloudSlots.slice(i, i + PRELOAD_CONCURRENCY);
+    await Promise.all(batch.map(async (slotIndex) => {
+      const slot = document.getElementById(`photo-slot-${slotIndex}`);
+      if (slot) slot.innerHTML = '<div class="icon" style="color:#3498db">⏳</div><div style="font-size:.6rem;color:#999">加载中...</div>';
+      const dataUrl = await fetchCloudPhoto(reportId, slotIndex);
+      // Guard: stop updating DOM if user navigated away during fetch
+      if (!APP.currentReport || APP.currentReport.id !== reportId) return;
+      if (dataUrl && slot) {
+        const isReadOnly = !!(APP.user && APP.user.role === 'supervisor') || r.status === 'approved';
+        const deleteBtn = !isReadOnly ? `<button class="delete-photo" onclick="event.stopPropagation();delPhoto(${slotIndex})">✕</button>` : '';
+        slot.innerHTML = `<img src="${dataUrl}">${deleteBtn}<div class="label">${PHOTO_SLOTS[slotIndex] || ''}</div>`;
+        slot.classList.remove('cloud-pending');
+        if (isReadOnly) {
+          slot.removeAttribute('onclick');
+          slot.style.cursor = 'default';
+        } else {
+          slot.setAttribute('onclick', `openPhotoMenu(${slotIndex})`);
+          slot.style.cursor = 'pointer';
+        }
+      } else if (slot) {
+        slot.innerHTML = '<div class="icon" style="color:#e74c3c">⚠</div><div style="font-size:.6rem;color:#e74c3c">加载失败</div><div class="label">' + (PHOTO_SLOTS[slotIndex] || '') + '</div>';
+      }
+    }));
+  }
 }
 
 function getReportUploadMeta(report) {
@@ -1344,15 +1623,15 @@ function renderReportForm() {
       <div class="inspect-list">${INSPECT_ITEMS.map(it => {
         const res = r.inspectItems[it.key] || '';
         const rem = r.inspectRemarks?.[it.key] || '';
-        return `<div class="inspect-item">
+        return `<div class="inspect-item" data-inspect-key="${it.key}">
         <div class="item-name"><strong>${it.name}</strong><small>${it.en}</small><small style="color:#e67e22;font-size:.65rem">${it.std}</small></div>
         <div class="inspect-result">
-          <button onclick="setInspect('${it.key}','PASS')" ${dis} style="background:${res === 'PASS' ? '#27ae60' : '#fff'};color:${res === 'PASS' ? '#fff' : '#333'};border-color:${res === 'PASS' ? '#27ae60' : '#ddd'}">✅ PASS</button>
-          <button onclick="setInspect('${it.key}','FAIL')" ${dis} style="background:${res === 'FAIL' ? '#e74c3c' : '#fff'};color:${res === 'FAIL' ? '#fff' : '#333'};border-color:${res === 'FAIL' ? '#e74c3c' : '#ddd'}">❌ FAIL</button>
-          <button onclick="setInspect('${it.key}','')" ${dis} style="background:${res === '' ? '#95a5a6' : '#fff'};color:${res === '' ? '#fff' : '#333'};border-color:${res === '' ? '#95a5a6' : '#ddd'}">N/A</button>
+          <button data-inspect-value="PASS" onclick="setInspect('${it.key}','PASS')" ${dis} style="background:${res === 'PASS' ? '#27ae60' : '#fff'};color:${res === 'PASS' ? '#fff' : '#333'};border-color:${res === 'PASS' ? '#27ae60' : '#ddd'}">✅ PASS</button>
+          <button data-inspect-value="FAIL" onclick="setInspect('${it.key}','FAIL')" ${dis} style="background:${res === 'FAIL' ? '#e74c3c' : '#fff'};color:${res === 'FAIL' ? '#fff' : '#333'};border-color:${res === 'FAIL' ? '#e74c3c' : '#ddd'}">❌ FAIL</button>
+          <button data-inspect-value="NA" onclick="setInspect('${it.key}','')" ${dis} style="background:${res === '' ? '#95a5a6' : '#fff'};color:${res === '' ? '#fff' : '#333'};border-color:${res === '' ? '#95a5a6' : '#ddd'}">N/A</button>
         </div>
       </div>
-      <div style="padding:6px 0;margin-bottom:8px;display:${res ? 'block' : 'none'}"><input type="text" placeholder="备注 Remark" value="${escapeHtml(rem)}" onchange="updateNested('inspectRemarks','${it.key}',this.value)" ${ro} style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:.8rem"></div>`;
+      <div class="inspect-remark" data-inspect-key="${it.key}" style="padding:6px 0;margin-bottom:8px;display:${res ? 'block' : 'none'}"><input type="text" placeholder="备注 Remark" value="${escapeHtml(rem)}" onchange="updateNested('inspectRemarks','${it.key}',this.value)" ${ro} style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:.8rem"></div>`;
       }).join('')}</div>
     </div></div>
   </div>
@@ -1388,7 +1667,7 @@ function renderReportForm() {
         ${r.status === 'submitted' && APP.user.role === 'supervisor' ? `<button class="btn btn-danger" onclick="rejectReport()">❌ 驳回</button>` : ''}
       </div>
       <div class="form-button-row" style="margin-top:8px">
-        <button class="btn btn-pdf" onclick="generatePDF()">📄 生成PDF</button>
+        <button class="btn btn-pdf" onclick="generatePDF()" style="background:linear-gradient(135deg,#0b6bb3,#178fd6);color:#fff;border:1px solid rgba(255,255,255,.2);box-shadow:0 4px 10px rgba(11,107,179,.28)">📄 生成PDF</button>
         ${!isReadOnly ? `<button class="btn btn-danger" onclick="trashReport()">🗑 删除</button>` : ''}
       </div>
       <div class="upload-status ${uploadMeta.className}" style="margin-top:8px">${escapeHtml(uploadMeta.text)}</div>
@@ -1448,7 +1727,76 @@ function loadImageFromFile(file) {
   });
 }
 
-function compressImage(file) {
+// ===== Web Worker for off-main-thread compression =====
+let _compressWorker = null;
+let _compressWorkerSupported = null; // null = untested, true/false after first attempt
+const _compressCallbacks = {};
+let _compressIdCounter = 0;
+
+function _getCompressWorker() {
+  if (_compressWorkerSupported === false) return null;
+  if (_compressWorker) return _compressWorker;
+  try {
+    if (typeof OffscreenCanvas === 'undefined') {
+      _compressWorkerSupported = false;
+      return null;
+    }
+    _compressWorker = new Worker('compress-worker.js');
+    _compressWorker.addEventListener('message', (e) => {
+      const { id, dataUrl, error, meta } = e.data;
+      const cb = _compressCallbacks[id];
+      if (!cb) return;
+      delete _compressCallbacks[id];
+      if (error) cb.reject(new Error(error));
+      else {
+        if (meta) console.log(`Photo compressed (worker): ${meta.originalWidth}x${meta.originalHeight} → ${meta.finalWidth}x${meta.finalHeight}, q=${meta.quality.toFixed(2)}, ~${meta.sizeKB}KB`);
+        cb.resolve(dataUrl);
+      }
+    });
+    _compressWorker.addEventListener('error', () => {
+      _compressWorkerSupported = false;
+      _compressWorker = null;
+      // Reject all pending callbacks
+      Object.keys(_compressCallbacks).forEach(id => {
+        _compressCallbacks[id].reject(new Error('Worker error'));
+        delete _compressCallbacks[id];
+      });
+    });
+    _compressWorkerSupported = true;
+    return _compressWorker;
+  } catch (e) {
+    _compressWorkerSupported = false;
+    return null;
+  }
+}
+
+function compressImageViaWorker(file) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (!file || !String(file.type || '').startsWith('image/')) {
+        reject(new Error('请选择图片文件'));
+        return;
+      }
+      const bitmap = await createImageBitmap(file);
+      const worker = _getCompressWorker();
+      if (!worker) {
+        bitmap.close();
+        reject(new Error('WORKER_UNAVAILABLE'));
+        return;
+      }
+      const id = ++_compressIdCounter;
+      _compressCallbacks[id] = { resolve, reject };
+      worker.postMessage({ id, imageBitmap: bitmap, maxDim: 1200, maxBase64Chars: 1.35 * 1024 * 1024 }, [bitmap]);
+    } catch (err) {
+      reject(err instanceof Error ? err : new Error(String(err || 'Worker compression failed')));
+    }
+  });
+}
+
+/**
+ * Main-thread fallback compression (used when Web Worker / OffscreenCanvas unavailable)
+ */
+function compressImageMainThread(file) {
   return new Promise(async (resolve, reject) => {
     try {
       if (!file || !String(file.type || '').startsWith('image/')) {
@@ -1477,7 +1825,6 @@ function compressImage(file) {
         }
       }
 
-      // Keep well below backend 1.5MB limit, even for difficult images.
       const MAX_BASE64_CHARS = 1.35 * 1024 * 1024;
       let dataUrl = '';
       let qualityUsed = 0.72;
@@ -1514,7 +1861,7 @@ function compressImage(file) {
       }
 
       const sizeKB = Math.round(dataUrl.length * 0.75 / 1024);
-      console.log(`Photo compressed: ${img.width}x${img.height} → ${finalW}x${finalH}, q=${qualityUsed.toFixed(2)}, ~${sizeKB}KB`);
+      console.log(`Photo compressed (main): ${img.width}x${img.height} → ${finalW}x${finalH}, q=${qualityUsed.toFixed(2)}, ~${sizeKB}KB`);
       resolve(dataUrl);
     } catch (err) {
       if (err && err.message === 'IMAGE_DECODE_FAILED') {
@@ -1526,26 +1873,103 @@ function compressImage(file) {
   });
 }
 
+/**
+ * Compress image — tries Web Worker first (off main thread), falls back to main thread
+ */
+async function compressImage(file) {
+  try {
+    return await compressImageViaWorker(file);
+  } catch (e) {
+    const msg = String(e && e.message ? e.message : e || '');
+    const shouldFallback =
+      msg === 'WORKER_UNAVAILABLE' ||
+      msg === 'Worker error' ||
+      /createImageBitmap|OffscreenCanvas|Worker/i.test(msg);
+
+    if (shouldFallback) {
+      console.warn('Worker compression unavailable, falling back to main thread:', msg || 'unknown');
+      return compressImageMainThread(file);
+    }
+    throw e;
+  }
+}
+
+/**
+ * Incrementally update a single photo slot in DOM without full re-render
+ */
+function updatePhotoSlotDOM(slotIndex, dataUrl) {
+  const slot = document.getElementById(`photo-slot-${slotIndex}`);
+  if (!slot) return false;
+  const r = APP.currentReport;
+  const isReadOnly = !!(APP.user && APP.user.role === 'supervisor') || (r && r.status === 'approved');
+  if (dataUrl && isRealPhotoDataUrl(dataUrl)) {
+    const deleteBtn = !isReadOnly ? `<button class="delete-photo" onclick="event.stopPropagation();delPhoto(${slotIndex})">✕</button>` : '';
+    slot.innerHTML = `<img src="${dataUrl}">${deleteBtn}<div class="label">${PHOTO_SLOTS[slotIndex] || ''}</div>`;
+    slot.classList.remove('cloud-pending');
+    if (isReadOnly) {
+      slot.removeAttribute('onclick');
+      slot.style.cursor = 'default';
+    } else {
+      slot.setAttribute('onclick', `openPhotoMenu(${slotIndex})`);
+      slot.style.cursor = 'pointer';
+    }
+  } else {
+    slot.innerHTML = `<div class="icon">📷</div><div class="label">${PHOTO_SLOTS[slotIndex] || ''}</div>`;
+    slot.classList.remove('cloud-pending');
+    if (isReadOnly) {
+      slot.removeAttribute('onclick');
+      slot.style.cursor = 'default';
+    } else {
+      slot.setAttribute('onclick', `openPhotoMenu(${slotIndex})`);
+      slot.style.cursor = 'pointer';
+    }
+  }
+  return true;
+}
+
 async function handlePhoto(e) {
+  const localProcessStart = perfNow();
   const file = e.target.files[0];
   if (!file) return;
+  const slotIdx = APP.editingPhotoSlot;
+  const previousDataUrl = APP.currentReport?.photos?.[slotIdx] || null;
   try {
+    // Show loading indicator immediately
+    const slot = document.getElementById(`photo-slot-${slotIdx}`);
+    if (slot) slot.innerHTML = '<div class="icon" style="color:#3498db">⏳</div><div style="font-size:.6rem;color:#999">处理中...</div>';
+
     const dataUrl = await compressImage(file);
-    APP.currentReport.photos[APP.editingPhotoSlot] = dataUrl;
+    APP.currentReport.photos[slotIdx] = dataUrl;
     if (!APP.currentReport._uploadedPhotoSlots) APP.currentReport._uploadedPhotoSlots = {};
-    APP.currentReport._uploadedPhotoSlots[APP.editingPhotoSlot] = false;
+    APP.currentReport._uploadedPhotoSlots[slotIdx] = false;
     APP.currentReport.syncStatus = 'pending';
     setUploadStatus(APP.currentReport, { state: 'pending', message: '照片已更新，待上传', lastError: '' });
     // CRITICAL: Save photos IMMEDIATELY (not debounced) to prevent data loss
     await localSave(APP.currentReport);
     await refreshSyncStateFromLocal();
-    console.log(`Photo slot ${APP.editingPhotoSlot} saved to IndexedDB immediately`);
+    console.log(`Photo slot ${slotIdx} saved to IndexedDB immediately`);
 
-    renderReportForm();
-    showStep(3, document.querySelectorAll('.tabs button')[3]);
+    // Incremental DOM update — only update the changed slot, not the whole form
+    if (!updatePhotoSlotDOM(slotIdx, dataUrl)) {
+      // Fallback: full re-render if slot not found (e.g. user switched tabs)
+      renderReportForm();
+      showStep(3, document.querySelectorAll('.tabs button')[3]);
+    }
+    perfRecord('photo_local_process', perfNow() - localProcessStart, {
+      slot: slotIdx,
+      ok: true,
+      sizeKB: Math.round((dataUrl.length * 0.75) / 1024)
+    });
     showToast('照片已添加 Photo added', 'success');
   } catch (err) {
+    perfRecord('photo_local_process', perfNow() - localProcessStart, {
+      slot: slotIdx,
+      ok: false,
+      reason: err && err.message ? err.message : 'unknown'
+    });
     showToast(err.message || '照片处理失败', 'error');
+    // Restore previous image on error to avoid perceived data loss
+    updatePhotoSlotDOM(slotIdx, previousDataUrl);
   }
   e.target.value = '';
 }
@@ -1562,9 +1986,9 @@ function delPhoto(i) {
   // Track deleted photo slots for cloud sync
   if (!APP.currentReport._deletedPhotoSlots) APP.currentReport._deletedPhotoSlots = [];
   if (!APP.currentReport._deletedPhotoSlots.includes(i)) APP.currentReport._deletedPhotoSlots.push(i);
-  safeLocalSave(APP.currentReport, 'delete-photo').then(() => refreshSyncStateFromLocal()); // Save immediately, not debounced
-  renderReportForm();
-  showStep(3, document.querySelectorAll('.tabs button')[3]);
+  safeLocalSave(APP.currentReport, 'delete-photo').then(() => refreshSyncStateFromLocal());
+  // Incremental DOM update — only clear the deleted slot
+  updatePhotoSlotDOM(i, null);
 }
 
 // ===== SAVE / SUBMIT / APPROVE =====
@@ -1583,7 +2007,8 @@ async function submitReport() {
   if (!r.poOrderNo?.trim()) { showToast('请填写PO订单号', 'error'); return; }
   if (!r.colorFilmModel?.trim()) { showToast('请填写彩膜型号', 'error'); return; }
   r.status = 'submitted';
-  r.inspector = APP.user.name;
+  r.inspector = QC_SIGN_NAME;
+  r.reviewer = REVIEWER_SIGN_NAME;
   await saveReport(r);
   APP.reports = await localGetAll();
   showToast('已提交审核 Submitted', 'success');
@@ -1594,7 +2019,7 @@ async function approveReport() {
   debouncedAutoSave.cancel();
   const r = APP.currentReport;
   r.status = 'approved';
-  r.reviewer = APP.user.name;
+  r.reviewer = REVIEWER_SIGN_NAME;
   await saveReport(r);
   APP.reports = await localGetAll();
   showToast('已通过 Approved', 'success');
@@ -1604,7 +2029,7 @@ async function approveReport() {
 async function rejectReport() {
   const r = APP.currentReport;
   r.status = 'rejected';
-  r.reviewer = APP.user.name;
+  r.reviewer = REVIEWER_SIGN_NAME;
   await saveReport(r);
   APP.reports = await localGetAll();
   showToast('已驳回 Rejected', 'error');
@@ -1689,24 +2114,16 @@ function renderTrash() {
 }
 
 // ===== REPORT LIST =====
-async function renderReportList() {
-  await syncReports();
-  document.getElementById('headerTitle').textContent = APP.user.role === 'supervisor' ? '审核中心 Review' : '我的报告 Reports';
-  let reports = APP.reports.filter(r => r.status !== 'trashed');
-  if (APP.user.role === 'inspector') reports = reports.filter(r => r.createdBy === APP.user.username);
-  reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-
+function _buildReportListHTML(reports) {
   const sLabel = { draft: '草稿', submitted: '待审核', approved: '已通过', rejected: '已驳回' };
   const sClass = { draft: 'badge-draft', submitted: 'badge-submitted', approved: 'badge-approved', rejected: 'badge-rejected' };
-
   const filterHtml = `<div class="tabs"><button class="active" onclick="filterList('all',this)">全部</button><button onclick="filterList('submitted',this)">待审核</button><button onclick="filterList('approved',this)">已通过</button><button onclick="filterList('rejected',this)">已驳回</button></div>`;
 
   if (!reports.length) {
-    document.getElementById('mainContent').innerHTML = filterHtml + `<div class="empty-state"><div class="icon">📋</div><p>${APP.user.role === 'supervisor' ? '暂无报告' : '点击"新建报告"开始'}</p></div>`;
-    return;
+    return filterHtml + `<div class="empty-state"><div class="icon">📋</div><p>${APP.user.role === 'supervisor' ? '暂无报告' : '点击"新建报告"开始'}</p></div>`;
   }
 
-  document.getElementById('mainContent').innerHTML = filterHtml + `<div id="rptList">${reports.map(r => `
+  return filterHtml + `<div id="rptList">${reports.map(r => `
     <div class="report-item report-open-item" data-report-id="${escapeHtml(r.id)}" data-status="${r.status}">
       <div style="width:40px;height:40px;background:${r.finalResult === 'pass' ? '#d4edda' : '#f8d7da'};border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem">${r.finalResult === 'pass' ? '✅' : '❌'}</div>
       <div class="report-info">
@@ -1716,13 +2133,62 @@ async function renderReportList() {
       </div>
       <span class="badge ${sClass[r.status]}">${sLabel[r.status]}</span>
     </div>`).join('')}</div>`;
+}
 
+function _bindReportListEvents() {
   document.querySelectorAll('#rptList .report-open-item').forEach(item => {
     item.addEventListener('click', () => {
       const reportId = item.getAttribute('data-report-id');
       if (reportId) editReport(reportId);
     });
   });
+}
+
+function _getFilteredReports() {
+  let reports = APP.reports.filter(r => r.status !== 'trashed');
+  if (APP.user.role === 'inspector') reports = reports.filter(r => r.createdBy === APP.user.username);
+  reports.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  return reports;
+}
+
+async function renderReportList() {
+  const localRenderStart = perfNow();
+  document.getElementById('headerTitle').textContent = APP.user.role === 'supervisor' ? '审核中心 Review' : '我的报告 Reports';
+
+  // FAST: render from local data immediately — no blocking network call
+  const localReports = _getFilteredReports();
+  document.getElementById('mainContent').innerHTML = _buildReportListHTML(localReports);
+  _bindReportListEvents();
+  perfRecord('list_local_render', perfNow() - localRenderStart, { count: localReports.length });
+
+  if (APP.perf.firstScreenStart > 0) {
+    const firstScreenStart = APP.perf.firstScreenStart;
+    APP.perf.firstScreenStart = 0;
+    requestAnimationFrame(() => {
+      perfRecord('first_screen_render', perfNow() - firstScreenStart, { count: localReports.length });
+    });
+  }
+
+  // THEN: sync from cloud in background and re-render only if data changed
+  if (serverOnline && APP.user && APP.token) {
+    try {
+      const prevCount = APP.reports.length;
+      const prevIds = new Set(APP.reports.map(r => r.id + ':' + (r.updatedAt || '')));
+      await syncReports();
+      // Only re-render if data actually changed
+      const newIds = new Set(APP.reports.map(r => r.id + ':' + (r.updatedAt || '')));
+      const changed = APP.reports.length !== prevCount ||
+        [...newIds].some(id => !prevIds.has(id)) ||
+        [...prevIds].some(id => !newIds.has(id));
+      if (changed && APP.currentTab === 'list') {
+        const updatedReports = _getFilteredReports();
+        document.getElementById('mainContent').innerHTML = _buildReportListHTML(updatedReports);
+        _bindReportListEvents();
+      }
+    } catch (e) {
+      if (e.message !== 'TOKEN_EXPIRED') console.warn('Background sync failed:', e.message);
+    }
+  }
 }
 
 function filterList(status, btn) {
@@ -1737,6 +2203,9 @@ function filterList(status, btn) {
 function renderProfile() {
   document.getElementById('headerTitle').textContent = '个人中心 Profile';
   const myR = APP.reports.filter(r => r.status !== 'trashed' && (APP.user.role === 'inspector' ? r.createdBy === APP.user.username : true));
+  const firstScreenStat = perfGetStats('first_screen_render');
+  const tabSwitchStat = perfGetStats('tab_switch');
+  const uploadStat = perfGetStats('report_upload_total');
   document.getElementById('mainContent').innerHTML = `
     <div class="card"><div class="card-header">👤 个人信息</div><div class="card-body">
       <p style="margin-bottom:6px"><strong>用户名：</strong>${escapeHtml(APP.user.username)}</p>
@@ -1754,6 +2223,17 @@ function renderProfile() {
     <div class="card"><div class="card-body">
       <p style="font-size:.72rem;color:#999">v4.0 · 森雅国际有限公司 Senia International</p>
       <p style="font-size:.72rem;color:#999;margin-top:4px">服务器: ${serverOnline ? '✅ 在线 (多设备同步)' : '⚠️ 离线 (仅本机)'}</p>
+    </div></div>
+    <div class="card"><div class="card-header">⚡ 性能测速</div><div class="card-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center;margin-bottom:10px">
+        <div style="padding:8px;background:#f6f8fa;border-radius:8px"><div style="font-size:.72rem;color:#666">首屏最近</div><div style="font-weight:700;color:#1a5276">${formatPerfMs(firstScreenStat.last)}</div></div>
+        <div style="padding:8px;background:#f6f8fa;border-radius:8px"><div style="font-size:.72rem;color:#666">切换最近</div><div style="font-weight:700;color:#1a5276">${formatPerfMs(tabSwitchStat.last)}</div></div>
+        <div style="padding:8px;background:#f6f8fa;border-radius:8px"><div style="font-size:.72rem;color:#666">上传最近</div><div style="font-weight:700;color:#1a5276">${formatPerfMs(uploadStat.last)}</div></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" style="flex:1" onclick="openPerfPanel()">打开测速面板</button>
+        <button class="btn btn-outline" style="width:auto;padding:10px 12px" onclick="clearPerfMetrics()">清空</button>
+      </div>
     </div></div>
     <div class="card" onclick="switchTab('trash')" style="cursor:pointer"><div class="card-body" style="display:flex;align-items:center;justify-content:space-between">
       <span>🗑 回收站 Recycle Bin</span>
