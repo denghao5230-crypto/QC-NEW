@@ -53,13 +53,13 @@ CREATE POLICY "Allow all on reports" ON reports FOR ALL USING (true) WITH CHECK 
 CREATE POLICY "Allow all on report_photos" ON report_photos FOR ALL USING (true) WITH CHECK (true);
 
 -- 6. 插入默认用户（bcrypt 哈希密码）
--- inspector1 密码: Senia#123q
--- supervisor1 密码: Senia#123.
-DELETE FROM users WHERE username IN ('inspector1', 'supervisor1');
+-- qc01 密码: Qc01#2026!
+-- admin 密码: Admin#2026!
+DELETE FROM users WHERE username IN ('inspector1', 'supervisor1', 'qc01', 'admin');
 
 INSERT INTO users (username, name, role, password_hash) VALUES
-  ('inspector1', 'Htet Aung', 'inspector', '$2a$10$Xpl329v0nPMYrkL3oqsXZ..jK55Gcu7DwvUYXEaFMbvfoHczRLii2'),
-  ('supervisor1', 'Mr. Jianhuai Luo', 'supervisor', '$2a$10$5j7Jfq62zYGbSfSuaBnSuOXPNgquU/8LhdS8fqCDNb/SJbSkTeNG2')
+  ('qc01', 'QC Inspector 01', 'inspector', '$2a$10$s.vdu35NLds2SYamuoX3xe1M79rSe4GOFCHlsuLDJVU5qiBwZfGWi'),
+  ('admin', 'QC Admin', 'supervisor', '$2a$10$ffGLiTviNj1ioiOhvpIBa.nypSe2p2vIqW7BCO.xvQzSTPPGZ0XXy')
 ON CONFLICT (username) DO UPDATE SET
   password_hash = EXCLUDED.password_hash,
   role = EXCLUDED.role,
