@@ -1424,48 +1424,105 @@ function chooseGallery() { closePhotoSheet(); document.getElementById('photoGall
  * Max dimension: 1200px, JPEG quality: adaptive based on size
  * Target: each photo < 200KB base64
  */
-function compressImage(file) {
+function getUnsupportedImageMessage(file) {
+  const type = String(file && file.type ? file.type : '').toLowerCase();
+  if (type.includes('heic') || type.includes('heif')) {
+    return '当前图片是 HEIC/HEIF 格式，浏览器不支持。请在手机相机设置中切换“最兼容”，或先转成 JPG 后再上传。';
+  }
+  return '图片加载失败，请更换图片或重新拍照';
+}
+
+function loadImageFromFile(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = function (ev) {
-      const img = new Image();
-      img.onload = function () {
-        try {
-          const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height;
-          const MAX_DIM = 1200;
-          if (w > MAX_DIM || h > MAX_DIM) {
-            if (w > h) { h = h * MAX_DIM / w; w = MAX_DIM; }
-            else { w = w * MAX_DIM / h; h = MAX_DIM; }
-          }
-          canvas.width = Math.round(w);
-          canvas.height = Math.round(h);
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-          // Adaptive quality: try higher quality first, reduce if too large
-          let quality = 0.7;
-          let dataUrl = canvas.toDataURL('image/jpeg', quality);
-          const TARGET_SIZE = 200 * 1024; // 200KB in base64 chars (~150KB binary)
-          while (dataUrl.length > TARGET_SIZE && quality > 0.3) {
-            quality -= 0.1;
-            dataUrl = canvas.toDataURL('image/jpeg', quality);
-          }
-
-          const sizeKB = Math.round(dataUrl.length * 0.75 / 1024);
-          console.log(`Photo compressed: ${img.width}x${img.height} → ${canvas.width}x${canvas.height}, q=${quality.toFixed(1)}, ~${sizeKB}KB`);
-          resolve(dataUrl);
-        } catch (canvasErr) {
-          reject(new Error('照片压缩失败: ' + canvasErr.message));
-        }
-      };
-      img.onerror = () => reject(new Error('图片加载失败，请重试'));
-      img.src = ev.target.result;
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(img);
     };
-    reader.onerror = () => reject(new Error('文件读取失败，请重试'));
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('IMAGE_DECODE_FAILED'));
+    };
+    img.src = objectUrl;
+  });
+}
+
+function compressImage(file) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (!file || !String(file.type || '').startsWith('image/')) {
+        reject(new Error('请选择图片文件'));
+        return;
+      }
+
+      const img = await loadImageFromFile(file);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('图片处理失败：无法创建画布'));
+        return;
+      }
+
+      const MAX_DIM = 1200;
+      let baseW = img.width;
+      let baseH = img.height;
+      if (baseW > MAX_DIM || baseH > MAX_DIM) {
+        if (baseW > baseH) {
+          baseH = baseH * MAX_DIM / baseW;
+          baseW = MAX_DIM;
+        } else {
+          baseW = baseW * MAX_DIM / baseH;
+          baseH = MAX_DIM;
+        }
+      }
+
+      // Keep well below backend 1.5MB limit, even for difficult images.
+      const MAX_BASE64_CHARS = 1.35 * 1024 * 1024;
+      let dataUrl = '';
+      let qualityUsed = 0.72;
+      let finalW = Math.round(baseW);
+      let finalH = Math.round(baseH);
+
+      for (let resizeAttempt = 0; resizeAttempt < 5; resizeAttempt++) {
+        const scale = Math.pow(0.82, resizeAttempt);
+        const w = Math.max(320, Math.round(baseW * scale));
+        const h = Math.max(320, Math.round(baseH * scale));
+        canvas.width = w;
+        canvas.height = h;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+
+        let quality = 0.72;
+        let candidate = canvas.toDataURL('image/jpeg', quality);
+        while (candidate.length > MAX_BASE64_CHARS && quality > 0.32) {
+          quality -= 0.08;
+          candidate = canvas.toDataURL('image/jpeg', quality);
+        }
+
+        dataUrl = candidate;
+        qualityUsed = quality;
+        finalW = w;
+        finalH = h;
+        if (dataUrl.length <= MAX_BASE64_CHARS) break;
+      }
+
+      if (!dataUrl || dataUrl.length > MAX_BASE64_CHARS) {
+        reject(new Error('图片过大，压缩后仍超限，请靠近拍摄或截图后重试'));
+        return;
+      }
+
+      const sizeKB = Math.round(dataUrl.length * 0.75 / 1024);
+      console.log(`Photo compressed: ${img.width}x${img.height} → ${finalW}x${finalH}, q=${qualityUsed.toFixed(2)}, ~${sizeKB}KB`);
+      resolve(dataUrl);
+    } catch (err) {
+      if (err && err.message === 'IMAGE_DECODE_FAILED') {
+        reject(new Error(getUnsupportedImageMessage(file)));
+        return;
+      }
+      reject(new Error((err && err.message) ? err.message : '照片处理失败'));
+    }
   });
 }
 
